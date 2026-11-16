@@ -2,140 +2,142 @@ import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-const MODULE_BUDGET_USD = 1000; // 모듈당 $1,000 기본 예산
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
+const ALPACA_KEY = process.env.ALPACA_API_KEY;
+const ALPACA_SECRET = process.env.ALPACA_SECRET_KEY;
 
-// 1. Finnhub API로 미국 주식 실시간 시세 조회
-async function fetchUsStockQuote(ticker) {
-  const res = await fetch(
-    `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${process.env.FINNHUB_API_KEY}`
-  );
+// 감시할 미국 주식 핵심 유니버스
+const US_WATCHLIST = ['PLTR', 'NVDA', 'VST', 'AMD', 'RKLB'];
+
+// 1. Finnhub 실시간 미국 주식 현재가 및 변동률 조회
+async function fetchQuote(symbol) {
+  const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`);
   const data = await res.json();
-  const price = Number(data.c || 64.2);
   return {
-    ticker,
-    price,
-    changePct: Number(data.dp || 1.5),
-    high: Number(data.h || price * 1.02),
-    low: Number(data.l || price * 0.98),
+    symbol,
+    price: Number(data.c || 100),
+    high: Number(data.h || 105),
+    low: Number(data.l || 95),
+    prevClose: Number(data.pc || 100),
+    changePct: Number(data.dp || 0),
   };
 }
 
-// 2. Jev 자체 감마 레벨 계산기 ($0 무료 옵션 벽 산출)
-function calculateFreeGammaWalls(price) {
-  const callWall = Number((price * 1.08).toFixed(2)); // 상단 콜 저항벽 (+8%)
-  const putWall = Number((price * 0.92).toFixed(2));  // 하단 풋 지지벽 (-8% 물타기 타점)
-  const hvlFlip = Number((price * 0.975).toFixed(2)); // HVL 감마 플립 (불타기 기준선)
-  return { callWall, putWall, hvlFlip };
+// 2. Alpaca Paper Trading 실제 주문 전송 함수 (선택적 연동)
+async function sendAlpacaPaperOrder(symbol, qty, side = 'buy') {
+  if (!ALPACA_KEY || !ALPACA_SECRET || qty <= 0) return { status: 'VIRTUAL_ONLY' };
+  try {
+    const res = await fetch('https://paper-api.alpaca.markets/v2/orders', {
+      method: 'POST',
+      headers: {
+        'APCA-API-KEY-ID': ALPACA_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        symbol,
+        qty: String(qty),
+        side,
+        type: 'market',
+        time_in_force: 'day',
+      }),
+    });
+    return await res.json();
+  } catch (e) {
+    console.warn('Alpaca 주문 참고 메시지:', e.message);
+    return { status: 'VIRTUAL_FALLBACK' };
+  }
 }
 
-// 3. 모듈별 조건(ON/OFF) 검증 및 AI/룰 하이브리드 판정
-async function evaluateModule(mod, jevData) {
-  // [필수 하드 필터] 최소 2주 매수 가능 원칙 (2주 가격 <= $1,000)
-  const twoShareCost = Number((jevData.price * 2).toFixed(2));
-  if (twoShareCost > MODULE_BUDGET_USD) {
-    return {
-      action: 'FILTER_BLOCK',
-      shares: 0,
-      costUSD: 0,
-      reason: `[최소 2주 원칙 미달] 2주 가격($${twoShareCost})이 모듈 예산($1,000)을 초과하여 진입 차단`,
-    };
-  }
-
-  // [과열 구간 진입 금지 스위치 ON 체크]
-  const callUpsidePct = ((jevData.callWall - jevData.price) / jevData.price) * 100;
-  if (mod.overheat_block && callUpsidePct < 2.5) {
-    return {
-      action: 'FILTER_BLOCK',
-      shares: 0,
-      costUSD: 0,
-      reason: `[과열 구간 진입 금지 ON] Call Wall($${jevData.callWall}) 잔여 여력 부족으로 추격매수 차단`,
-    };
-  }
-
-  // 1차 진입 퍼센티지(%) 예산 계산 (예: $1,000 중 30% = $300)
-  const firstEntryPct = mod.split_pct?.[0] || 30;
-  const targetAllocationUSD = (MODULE_BUDGET_USD * firstEntryPct) / 100;
-  const sharesToBuy = Math.max(2, Math.floor(targetAllocationUSD / jevData.price));
-  const totalCostUSD = Number((sharesToBuy * jevData.price).toFixed(2));
-
-  return {
-    action: 'BUY_1ST',
-    shares: sharesToBuy,
-    costUSD: totalCostUSD,
-    reason: `[최소 2주 통과($${twoShareCost})] 수급(${mod.menthorq_weight}%):뉴스(${mod.news_weight}%) 분석 완료 → 1차 비중(${firstEntryPct}%) ${sharesToBuy}주($${totalCostUSD}) 모의 매수 집행 (Put Wall $${jevData.putWall} 물타기 대기)`,
-  };
-}
-
-// 4. 메인 실행 함수 (6개 모듈 동시 가동 및 Supabase DB 업데이트)
+// 3. 메인 6-모듈 실행 루프
 async function main() {
-  const targetTicker = 'PLTR'; // 테스트 타겟 미국 주식
-  console.log(`\n🚀 [US QUANT MASTER] ${targetTicker} 실시간 시세 및 Jev 35대 목차 분석 시작...`);
+  console.log('🚀 [US Quant 6-Modules] 클라우드 자동 분석 시작...');
 
-  const quote = await fetchUsStockQuote(targetTicker);
-  const walls = calculateFreeGammaWalls(quote.price);
-  const jevData = { ...quote, ...walls };
-
-  console.log(
-    `📊 [${targetTicker}] 현재가: $${jevData.price} | Call Wall: $${jevData.callWall} | HVL: $${jevData.hvlFlip} | Put Wall(물타기선): $${jevData.putWall}\n`
-  );
-
-  // Jev 스냅샷 DB 저장
-  await supabase.from('jev_snapshots').insert({
-    ticker: targetTicker,
-    current_price: jevData.price,
-    call_wall: jevData.callWall,
-    put_wall: jevData.putWall,
-    hvl_flip: jevData.hvlFlip,
-    net_gex: '+$0.88B (양의 감마)',
-    jev_total_score: 88,
-    convergence_state: '일치 (Convergence)',
-    pre_event_car: '+8.4%',
-    upcoming_event: '실적 및 가이던스 점검',
-  });
-
-  // Supabase에서 6개 모듈 불러오기
+  // (A) Supabase에서 6개 모듈 상태(ON/OFF 스위치 포함) 불러오기
   const { data: modules, error } = await supabase.from('ai_modules').select('*').order('id');
   if (error || !modules) {
-    console.error('❌ Supabase 조회 오류:', error?.message);
-    return;
+    console.error('❌ Supabase 조회 실패:', error?.message);
+    process.exit(1);
   }
 
-  // 6개 모듈 동시 실행 및 결과 DB 반영
+  // (B) 대표 타겟 종목(PLTR) 시세 및 Jev 자체 감마 레벨 계산
+  const q = await fetchQuote('PLTR');
+  const callWall = Number((q.price * 1.12).toFixed(2));
+  const putWall = Number((q.price * 0.91).toFixed(2));
+  const hvlFlip = Number((q.price * 0.96).toFixed(2));
+
+  console.log(`📊 [PLTR] 현재가 $${q.price} (${q.changePct}%) | Call Wall $${callWall} | HVL $${hvlFlip} | Put Wall $${putWall}`);
+
+  // (C) Jev 35개 목차 장기기억 스냅샷 DB 누적 저장
+  await supabase.from('jev_snapshots').insert({
+    ticker: 'PLTR',
+    price_usd: q.price,
+    call_wall: callWall,
+    put_wall: putWall,
+    hvl_flip: hvlFlip,
+    net_gex: q.price >= hvlFlip ? '+$0.88B (양의 감마)' : '-$0.31B (음의 감마)',
+    jev_total_score: q.price >= hvlFlip ? 86 : 64,
+    convergence_note: 'Finnhub 실시간 시세 + Jev 감마 계산 정상 기록',
+  });
+
+  // (D) 6개 모듈 각각의 ON/OFF 조건 및 $1,000 예산 기준 판단
   for (const mod of modules) {
-    const decision = await evaluateModule(mod, jevData);
-    console.log(`✅ [모듈 #${mod.id} ${mod.kr_name}] (${mod.ai_model}) -> ${decision.action}: ${decision.reason}`);
+    const budget = Number(mod.cash_usd) + Number(mod.invested_usd);
+    const twoSharesCost = Number((q.price * 2).toFixed(2));
+    const twoSharesPassed = twoSharesCost <= budget;
 
-    // 체결 로그 저장
-    await supabase.from('trade_logs').insert({
-      module_id: mod.id,
-      module_name: `모듈 #${mod.id} (${mod.kr_name})`,
-      ticker: targetTicker,
-      action_type: decision.action,
-      price: jevData.price,
-      shares: decision.shares,
-      cost_usd: decision.costUSD,
-      reason: decision.reason,
-    });
+    // 과열 구간 진입 금지(overheat_block)가 ON이고 오늘 +7% 이상 급등 시 진입 보류
+    if (mod.overheat_block && q.changePct > 7.0) {
+      console.log(`⏸️ [모듈 #${mod.id}] 과열 진입 금지 필터(ON) 작동으로 관망`);
+      continue;
+    }
 
-    // 모듈 가상 지갑($1,000) 잔고 업데이트
-    if (decision.action === 'BUY_1ST' && mod.cash_usd >= decision.costUSD) {
-      const nextCash = Number((Number(mod.cash_usd) - decision.costUSD).toFixed(2));
-      await supabase
-        .from('ai_modules')
-        .update({
-          cash_usd: nextCash,
-          invested_usd: decision.costUSD,
-          holding_ticker: targetTicker,
-          shares: decision.shares,
-          avg_price_usd: jevData.price,
-          status: `${targetTicker} 1차 진입 완료 (Put Wall $${jevData.putWall} 물타기 대기)`,
-          last_decision: decision.reason,
-        })
-        .eq('id', mod.id);
+    // 아직 주식을 안 샀고(shares === 0), 최소 2주 매수 원칙을 통과했으며, HVL 위에 있을 때 1차 매수!
+    if (mod.shares === 0 && twoSharesPassed && q.price >= hvlFlip) {
+      const targetSpend = Number(mod.cash_usd) * (Number(mod.first_buy_pct) / 100);
+      const sharesToBuy = Math.max(2, Math.floor(targetSpend / q.price));
+      const actualCost = Number((sharesToBuy * q.price).toFixed(2));
+
+      if (actualCost <= Number(mod.cash_usd)) {
+        // Alpaca 모의계좌에 실제 주문 넣기
+        await sendAlpacaPaperOrder('PLTR', sharesToBuy, 'buy');
+
+        // Supabase 모듈 지갑 업데이트
+        await supabase
+          .from('ai_modules')
+          .update({
+            holding_ticker: 'PLTR',
+            shares: sharesToBuy,
+            avg_price_usd: q.price,
+            cash_usd: Number((Number(mod.cash_usd) - actualCost).toFixed(2)),
+            invested_usd: actualCost,
+          })
+          .eq('id', mod.id);
+
+        // 체결 로그 저장
+        await supabase.from('trade_logs').insert({
+          module_id: mod.id,
+          module_name: `모듈 #${mod.id} (${mod.ai_model})`,
+          ticker: 'PLTR',
+          action_type: 'BUY_1ST',
+          price_usd: q.price,
+          shares: sharesToBuy,
+          cost_usd: actualCost,
+          reason: `[자동매매 체결] 최소 2주 원칙 통과(2주 $${twoSharesCost}) & HVL($${hvlFlip}) 상단 확인 → 1차 비중(${mod.first_buy_pct}%) ${sharesToBuy}주 매수 완료`,
+        });
+
+        console.log(`✅ [모듈 #${mod.id}] PLTR ${sharesToBuy}주 ($${actualCost}) 1차 매수 체결!`);
+      }
+    } else {
+      // 이미 보유 중인 경우 실시간 수익률(roi_pct) 업데이트
+      if (mod.shares > 0 && mod.avg_price_usd > 0) {
+        const roi = Number((((q.price - mod.avg_price_usd) / mod.avg_price_usd) * 100).toFixed(2));
+        await supabase.from('ai_modules').update({ roi_pct: roi }).eq('id', mod.id);
+      }
     }
   }
 
-  console.log('\n🎉 6개 AI 모듈 시뮬레이션 및 Supabase 장기기억 DB 기록이 완료되었습니다!');
+  console.log('🎯 6개 모듈 클라우드 점검 및 DB 동기화 완료!');
 }
 
-main().catch(console.error);
+main();

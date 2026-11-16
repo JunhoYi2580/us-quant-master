@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>US QUANT 6-MODULE MASTER</title>
+  <!-- Tailwind CSS & Supabase SDK 로드 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+  <!-- 상단 헤더 -->
+  <header class="border-b border-slate-800 bg-slate-900/95 sticky top-0 z-50 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="font-extrabold text-lg text-white">
+          🇺🇸 US QUANT <span class="text-cyan-400">JEV & 6-MODULE</span> LIVE DASHBOARD
+        </h1>
+        <p class="text-xs text-slate-400">
+          Supabase 실시간 DB 연동 · 모듈당 $1,000 (총 $6,000 모의투자) · 최소 2주 매수 원칙
+        </p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="db-status" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 font-mono">
+          DB 연결 확인 중...
+        </span>
+        <button onclick="loadAllData()" class="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition">
+          🔄 실시간 새로고침
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-4 space-y-6">
+    <!-- 1. 모델별 단독 보기 필터 바 -->
+    <section class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center gap-2">
+      <span class="text-xs font-bold text-cyan-400 mr-2">👁️ AI 모델별 보기:</span>
+      <button onclick="selectModule('ALL')" id="btn-mod-ALL" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white">
+        전체 6개 모델 ($6,000)
+      </button>
+      <div id="module-filter-buttons" class="flex flex-wrap gap-2"></div>
+    </section>
+
+    <!-- 2. 6개 AI 모듈 실시간 카드 & ON/OFF 스위치 매트릭스 -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold text-white">🎛️ 6개 AI 모듈 실시간 지갑 ($1,000/모듈) & 방어 조건 ON/OFF 스위치</h2>
+        <span class="text-xs text-slate-400">스위치를 클릭하면 즉시 Supabase DB에 반영됩니다</span>
+      </div>
+      <div id="modules-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- JS로 렌더링 -->
+      </div>
+    </section>
+
+    <!-- 3. Jev 최근 감마 스냅샷 & 체결 로그 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <h3 class="text-sm font-bold text-cyan-400 mb-3">📊 Jev 35대 목차 & 감마 벽(Call/Put Wall) 최근 스냅샷</h3>
+        <div id="snapshots-list" class="space-y-2 text-xs font-mono"></div>
+      </section>
+
+      <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <h3 class="text-sm font-bold text-amber-400 mb-3">⚡ STEP 4. 실시간 모의투자 체결 & ON/OFF 로그</h3>
+        <div id="logs-list" class="space-y-2 text-xs max-h-96 overflow-y-auto"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // =========================================================================
+    // ★ 아래 두 줄에 사장님의 SUPABASE_URL 과 SUPABASE_ANON_KEY 를 넣어주세요!
+    // =========================================================================
+    const SUPABASE_URL = "https://여기에사장님코드.supabase.co";
+    const SUPABASE_ANON_KEY = "여기에_sb_publishable_키를_넣으세요";
+
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let currentFilter = 'ALL';
+    let globalModules = [];
+
+    async function loadAllData() {
+      const statusEl = document.getElementById('db-status');
+      try {
+        // 1. 6개 모듈 불러오기
+        const { data: mods, error: modErr } = await sb.from('ai_modules').select('*').order('id');
+        if (modErr) throw modErr;
+        globalModules = mods || [];
+
+        statusEl.textContent = '✅ Supabase 실시간 연결됨';
+        statusEl.className = 'text-xs px-3 py-1.5 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-700 font-mono';
+
+        renderFilterButtons();
+        renderModules();
+
+        // 2. Jev 스냅샷 불러오기
+        const { data: snaps } = await sb.from('jev_snapshots').select('*').order('created_at', { ascending: false }).limit(5);
+        renderSnapshots(snaps || []);
+
+        // 3. 체결 로그 불러오기
+        const { data: logs } = await sb.from('trade_logs').select('*').order('created_at', { ascending: false }).limit(15);
+        renderLogs(logs || []);
+      } catch (err) {
+        statusEl.textContent = '⚠️ DB 키 확인 필요: ' + err.message;
+        statusEl.className = 'text-xs px-3 py-1.5 rounded-lg bg-rose-950 text-rose-300 border border-rose-700 font-mono';
+      }
+    }
+
+    function selectModule(modId) {
+      currentFilter = modId;
+      renderFilterButtons();
+      renderModules();
+    }
+
+    function renderFilterButtons() {
+      const btnAll = document.getElementById('btn-mod-ALL');
+      btnAll.className = currentFilter === 'ALL'
+        ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white'
+        : 'px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-400 border border-slate-800';
+
+      const container = document.getElementById('module-filter-buttons');
+      container.innerHTML = globalModules.map(m => `
+        <button onclick="selectModule(${m.id})" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+          currentFilter === m.id
+            ? 'bg-cyan-600 text-white border-cyan-400'
+            : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+        }">
+          #${m.id} ${m.kr_name} (+${m.roi_pct}%)
+        </button>
+      `).join('');
+    }
+
+    async function toggleSwitch(modId, field, currentVal) {
+      const nextVal = !currentVal;
+      await sb.from('ai_modules').update({ [field]: nextVal }).eq('id', modId);
+      await loadAllData();
+    }
+
+    function renderModules() {
+      const grid = document.getElementById('modules-grid');
+      const list = currentFilter === 'ALL' ? globalModules : globalModules.filter(m => m.id === currentFilter);
+
+      grid.innerHTML = list.map(m => `
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-lg">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div>
+              <span class="text-xs font-mono font-bold text-cyan-400">#${m.id} ${m.code_name}</span>
+              <h3 class="text-sm font-extrabold text-white">${m.kr_name} <span class="text-xs text-indigo-300 font-mono">(${m.ai_model})</span></h3>
+            </div>
+            <span class="text-base font-mono font-extrabold text-emerald-400">+${m.roi_pct}%</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono">
+            <div>
+              <span class="text-slate-400 block text-[10px]">가상 지갑 ($1,000 기준)</span>
+              <span class="text-white font-bold">현금 $${m.cash_usd} / 투자 $${m.invested_usd}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">보유 종목 & 비중(%)</span>
+              <span class="text-amber-300 font-bold">${m.holding_ticker} (${m.shares}주) · ${m.first_buy_pct}/${m.water_buy_pct}/${m.pyramid_buy_pct}%</span>
+            </div>
+          </div>
+
+          <!-- 실시간 ON/OFF 버튼 4개 -->
+          <div class="grid grid-cols-2 gap-1.5 text-xs font-mono">
+            <button onclick="toggleSwitch(${m.id}, 'priced_in_filter', ${m.priced_in_filter})"
+              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.priced_in_filter ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
+              <span>선반영필터</span><b>${m.priced_in_filter ? 'ON' : 'OFF'}</b>
+            </button>
+            <button onclick="toggleSwitch(${m.id}, 'overheat_block', ${m.overheat_block})"
+              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.overheat_block ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
+              <span>과열진입금지</span><b>${m.overheat_block ? 'ON' : 'OFF'}</b>
+            </button>
+            <button onclick="toggleSwitch(${m.id}, 'guidance_first_rule', ${m.guidance_first_rule})"
+              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.guidance_first_rule ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
+              <span>가이던스우선</span><b>${m.guidance_first_rule ? 'ON' : 'OFF'}</b>
+            </button>
+            <button onclick="toggleSwitch(${m.id}, 'big_news_cooling_3h', ${m.big_news_cooling_3h})"
+              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.big_news_cooling_3h ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
+              <span>3시간냉각기</span><b>${m.big_news_cooling_3h ? 'ON' : 'OFF'}</b>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderSnapshots(snaps) {
+      const el = document.getElementById('snapshots-list');
+      if (!snaps.length) {
+        el.innerHTML = '<div class="text-slate-500">아직 기록된 스냅샷이 없습니다.</div>';
+        return;
+      }
+      el.innerHTML = snaps.map(s => `
+        <div class="bg-slate-950 p-2.5 rounded border border-slate-800 flex justify-between items-center">
+          <div>
+            <span class="font-bold text-white">${s.ticker}</span>
+            <span class="text-cyan-400 ml-2">$${s.price_usd}</span>
+            <span class="text-slate-400 ml-2">Call $${s.call_wall} / HVL $${s.hvl_flip} / Put $${s.put_wall}</span>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Jev ${s.jev_total_score}점</span>
+        </div>
+      `).join('');
+    }
+
+    function renderLogs(logs) {
+      const el = document.getElementById('logs-list');
+      const filtered = currentFilter === 'ALL' ? logs : logs.filter(l => l.module_id === currentFilter);
+      if (!filtered.length) {
+        el.innerHTML = '<div class="text-slate-500">체결 로그가 없습니다.</div>';
+        return;
+      }
+      el.innerHTML = filtered.map(l => `
+        <div class="bg-slate-950 p-2.5 rounded border border-slate-800 space-y-1">
+          <div class="flex justify-between font-mono">
+            <span class="font-bold text-amber-300">${l.module_name} · ${l.ticker} (${l.action_type})</span>
+            <span class="text-emerald-400">$${l.price_usd} × ${l.shares}주 ($${l.cost_usd})</span>
+          </div>
+          <p class="text-slate-300">${l.reason}</p>
+        </div>
+      `).join('');
+    }
+
+    loadAllData();
+  </script>
+</body>
+</html>
