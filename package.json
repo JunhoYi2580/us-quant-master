@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "quant": "node engine/run_6modules_quant.mjs"
+    "quant": "node engine/run_6modules_quant.mjs",
+    "build": "mkdir -p public && cp index.html public/index.html"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
