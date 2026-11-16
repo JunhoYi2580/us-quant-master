@@ -1,9 +1,3 @@
 {
-  "version": 2,
-  "framework": null,
-  "buildCommand": "",
-  "outputDirectory": ".",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "outputDirectory": "public"
 }
