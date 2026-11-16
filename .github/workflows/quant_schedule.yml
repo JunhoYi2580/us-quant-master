@@ -1,0 +1,34 @@
+name: US Quant 6-Modules Auto Runner
+
+on:
+  # 1) 내가 원할 때 GitHub 홈페이지에서 버튼 하나로 즉시 실행 가능
+  workflow_dispatch:
+  # 2) 미국 정규장 시간(월~금) 동안 매시간 자동 실행 (UTC 기준 14시~21시 = 한국 시간 밤 11시~새벽 6시)
+  schedule:
+    - cron: '35 14-21 * * 1-5'
+
+jobs:
+  run-quant-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. 코드 불러오기
+        uses: actions/checkout@v4
+
+      - name: 2. Node.js 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 3. 패키지 설치
+        run: npm install
+
+      - name: 4. 6개 AI 모듈 퀀트 엔진 가동
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: npm run quant
