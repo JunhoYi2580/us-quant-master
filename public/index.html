@@ -224,8 +224,8 @@
 
   <script>
     // 기존 index.html에 설정된 Supabase 연결 정보를 자동으로 유지하거나 기본값 사용
-    const SUPABASE_URL = window.SUPABASE_URL || localStorage.getItem('sb_url') || '';
-    const SUPABASE_KEY = window.SUPABASE_ANON_KEY || localStorage.getItem('sb_key') || '';
+    const SUPABASE_URL = window.SUPABASE_URL || localStorage.getItem('sb_url') || 'https://omybawknplaiytchaoed.supabase.co';
+    const SUPABASE_KEY = window.SUPABASE_ANON_KEY || localStorage.getItem('sb_key') || 'sb_publishable_nQ29mu7baq-90AKyUdtyrw_iv0MapXF';
     let sbClient = null;
     if (SUPABASE_URL && SUPABASE_KEY && window.supabase) {
       sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
