@@ -275,13 +275,13 @@
     const FALLBACK_MODULES = [
       { id: 1, code_name: 'Balanced Quant', kr_name: '정석 밸런스형', ai_model: 'Claude 3.5 Sonnet', cash_usd: 750, invested_usd: 250, holding_ticker: 'PLTR', shares: 4, avg_price_usd: 62.5, roi_pct: 6.8, split_1st_pct: 30, split_water_pct: 40, split_pyramid_pct: 30, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true },
       { id: 2, code_name: 'Gamma Sniper', kr_name: '옵션 수급 스나이퍼', ai_model: 'GPT-4o', cash_usd: 472, invested_usd: 528, holding_ticker: 'NVDA', shares: 4, avg_price_usd: 132.0, roi_pct: 9.2, split_1st_pct: 20, split_water_pct: 60, split_pyramid_pct: 20, priced_in_filter: false, overheat_block: true, guidance_first: false, fad_no_watering: false, big_news_cooling_3h: true },
-      { id: 3, code_name: 'Academic Skeptic', kr_name: '선반영 논문 철벽방어', ai_model: 'DeepSeek-R1', cash_usd: 1000, invested_usd: 0, holding_ticker: '현금관망', shares: 0, avg_price_usd: 0, roi_pct: 4.1, split_1st_pct: 50, split_water_pct: 50, split_pyramid_pct: 0, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true },
+      { id: 3, code_name: 'Academic Skeptic', kr_name: '선반영 논문 철벽방어', ai_model: 'DeepSeek-R1', cash_usd: 1000, invested_usd: 0, holding_ticker: '현금관망', shares: 0, avg_price_usd: 0, roi_pct: 0.0, split_1st_pct: 50, split_water_pct: 50, split_pyramid_pct: 0, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true },
       { id: 4, code_name: 'Theme Rider', kr_name: '시대 테마 & 불타기형', ai_model: 'Gemini 1.5 Pro', cash_usd: 460, invested_usd: 540, holding_ticker: 'VST', shares: 4, avg_price_usd: 135.0, roi_pct: 11.4, split_1st_pct: 40, split_water_pct: 0, split_pyramid_pct: 60, priced_in_filter: false, overheat_block: false, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: false },
       { id: 5, code_name: 'Smart Money', kr_name: '상위 투자자(13F) 복제', ai_model: 'Claude 3.5 Haiku', cash_usd: 752.8, invested_usd: 247.2, holding_ticker: 'PLTR', shares: 4, avg_price_usd: 61.8, roi_pct: 8.3, split_1st_pct: 30, split_water_pct: 50, split_pyramid_pct: 20, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true },
       { id: 6, code_name: 'Contrarian Hunter', kr_name: '악재-수급 괴리 역발상', ai_model: 'Gemini Flash Thinking', cash_usd: 470, invested_usd: 530, holding_ticker: 'AMD', shares: 4, avg_price_usd: 132.5, roi_pct: 5.5, split_1st_pct: 25, split_water_pct: 50, split_pyramid_pct: 25, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: false, big_news_cooling_3h: true }
     ];
 
-    // ★ 실시간 주가 반영 & 수익률(%) 재계산 함수
+    // ★ 실시간 주가 반영 & 수익률(%) 재계산 함수 (0주 보유 시 현금 기준 실제 수익률 계산)
     async function refreshLiveTickerPrices() {
       const tickers = [...new Set(
         modulesData
@@ -311,7 +311,9 @@
           const liveRoi = Number((((totalEquity - 1000) / 1000) * 100).toFixed(2));
           return { ...m, live_price_usd: currentPrice, eval_stock_usd: evalStockValue, roi_pct: liveRoi };
         }
-        return { ...m, live_price_usd: 0, eval_stock_usd: 0 };
+        // 보유 주식이 0주(현금 관망)일 때는 현금 잔고($1,000 기준)에서 실제 실현 손익만 계산
+        const cashOnlyRoi = Number((((cash - 1000) / 1000) * 100).toFixed(2));
+        return { ...m, live_price_usd: 0, eval_stock_usd: 0, roi_pct: cashOnlyRoi };
       });
     }
 
@@ -388,7 +390,7 @@
       const btnWrap = document.getElementById('module-selector-buttons');
       btnWrap.innerHTML = modulesData.map(m => {
         const roi = Number(m.roi_pct || 0);
-        const roiColor = roi >= 0 ? 'text-[#F04452]' : 'text-[#3182F6]';
+        const roiColor = roi > 0 ? 'text-[#F04452]' : roi < 0 ? 'text-[#3182F6]' : 'text-[#8B95A1]';
         return `
           <button onclick="selectModule(${m.id})" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
             selectedModId === m.id ? 'bg-[#25252E] text-white border-[#3182F6]' : 'bg-[#17171C] text-[#B0B8C1] border-[#232329] hover:border-[#33333D]'
@@ -396,7 +398,7 @@
             <span class="font-mono text-[#8B95A1]">#${m.id}</span>
             <span>${m.kr_name}</span>
             <span class="px-1.5 py-0.5 rounded bg-[#101012] text-[#E5E8EB] font-mono text-[10px]">${m.holding_ticker || '현금대기'}</span>
-            <span class="${roiColor} font-mono">${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%</span>
+            <span class="${roiColor} font-mono">${roi > 0 ? '+' : ''}${roi.toFixed(2)}%</span>
           </button>
         `;
       }).join('');
@@ -404,11 +406,8 @@
       // 모듈 카드 그리드 렌더
       const grid = document.getElementById('view-MODULES');
       grid.innerHTML = modulesData.map(m => {
-        const s1 = m.split_1st_pct ?? 30;
-        const s2 = m.split_water_pct ?? 40;
-        const s3 = m.split_pyramid_pct ?? 30;
         const roi = Number(m.roi_pct || 0);
-        const roiColor = roi >= 0 ? 'text-[#F04452]' : 'text-[#3182F6]';
+        const roiColor = roi > 0 ? 'text-[#F04452]' : roi < 0 ? 'text-[#3182F6]' : 'text-[#8B95A1]';
         const curPriceTag = m.live_price_usd > 0 ? ` · 현재 $${Number(m.live_price_usd).toFixed(2)}` : '';
 
         return `
@@ -419,7 +418,7 @@
                   <span class="text-xs font-mono font-bold text-[#3182F6]">#${m.id} ${m.code_name}</span>
                   <h3 class="font-extrabold text-base text-white">${m.kr_name} <span class="text-xs text-[#8B95A1] font-mono font-normal">(${m.ai_model})</span></h3>
                 </div>
-                <span class="text-lg font-mono font-black ${roiColor} tick-flash">${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%</span>
+                <span class="text-lg font-mono font-black ${roiColor} tick-flash">${roi > 0 ? '+' : ''}${roi.toFixed(2)}%</span>
               </div>
 
               <div class="bg-[#101012] border border-[#202026] rounded-xl p-3 grid grid-cols-2 gap-2 text-xs mb-3">
@@ -512,8 +511,8 @@
       document.getElementById('insp-title').innerHTML = `${m.kr_name} <span class="text-[#8B95A1] font-mono text-xs font-normal">(${m.ai_model})</span>`;
       document.getElementById('insp-holding').innerText = `보유: ${m.holding_ticker || '현금 관망'} (${m.shares || 0}주 · 평단 $${entry})`;
       const inspRoiEl = document.getElementById('insp-roi');
-      inspRoiEl.innerText = `실시간 수익률: ${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%`;
-      inspRoiEl.className = `text-xs font-mono font-bold ${roi >= 0 ? 'text-[#F04452]' : 'text-[#3182F6]'}`;
+      inspRoiEl.innerText = `실시간 수익률: ${roi > 0 ? '+' : ''}${roi.toFixed(2)}%`;
+      inspRoiEl.className = `text-xs font-mono font-bold ${roi > 0 ? 'text-[#F04452]' : roi < 0 ? 'text-[#3182F6]' : 'text-[#8B95A1]'}`;
       document.getElementById('insp-open-modal-btn').onclick = () => openDetailModal(m.id);
 
       document.getElementById('insp-chart-title').innerText = `[${m.holding_ticker || '관망'}] 매수 지점 & 실시간 주가($${curPrice.toFixed(2)}) 차트`;
@@ -633,7 +632,7 @@
             <td class="p-3 text-[#8B95A1]">${m.ai_model}</td>
             <td class="p-3 text-white">${m.holding_ticker || '현금관망'} (${m.shares || 0}주)</td>
             <td class="p-3 text-[#B0B8C1]">${months[selectedMonthIdx]}</td>
-            <td class="p-3 font-bold text-[#F04452]">${mRoi >= 0 ? '+' : ''}${mRoi}%</td>
+            <td class="p-3 font-bold text-[#F04452]">${mRoi > 0 ? '+' : ''}${mRoi}%</td>
             <td class="p-3 text-[#3182F6]">${mMdd}%</td>
             <td class="p-3 text-[#E5E8EB]">${mWin}%</td>
             <td class="p-3 text-[#E5E8EB]">${mSharpe}</td>
