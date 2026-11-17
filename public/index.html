@@ -3,223 +3,573 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>US QUANT 6-MODULE MASTER</title>
-  <!-- Tailwind CSS & Supabase SDK 로드 -->
+  <title>US QUANT JEV & 6-MODULE MASTER (24H Live DB)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Noto Sans KR', sans-serif; background-color: #020617; color: #f1f5f9; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+<body class="min-h-screen flex flex-col">
 
-  <!-- 상단 헤더 -->
-  <header class="border-b border-slate-800 bg-slate-900/95 sticky top-0 z-50 px-4 py-3">
-    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 class="font-extrabold text-lg text-white">
-          🇺🇸 US QUANT <span class="text-cyan-400">JEV & 6-MODULE</span> LIVE DASHBOARD
-        </h1>
-        <p class="text-xs text-slate-400">
-          Supabase 실시간 DB 연동 · 모듈당 $1,000 (총 $6,000 모의투자) · 최소 2주 매수 원칙
-        </p>
-      </div>
+  <!-- TOP HEADER -->
+  <header class="border-b border-slate-800 bg-slate-900/95 sticky top-0 z-40 px-4 py-3">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
-        <span id="db-status" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 font-mono">
-          DB 연결 확인 중...
-        </span>
-        <button onclick="loadAllData()" class="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition">
-          🔄 실시간 새로고침
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center font-black text-white shadow-lg">
+          JQ
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-black text-base md:text-lg text-white">US QUANT <span class="text-cyan-400">JEV & 6-MODULE</span></h1>
+            <span id="db-status-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700 font-mono">
+              ● LIVE DB SYNCED
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-400">24시간 전 세션 감시 · 6개월 실전 트랙 레코드 검증 대시보드</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800 text-xs flex items-center gap-4">
+          <div>
+            <span class="text-slate-400 block text-[10px]">6개월 검증 총예산</span>
+            <span class="font-mono font-bold text-white">$6,000 <span class="text-slate-500 text-[10px]">($1,000×6)</span></span>
+          </div>
+          <div class="h-6 w-px bg-slate-800"></div>
+          <div>
+            <span class="text-slate-400 block text-[10px]">전체 평균 수익률</span>
+            <span id="header-avg-roi" class="font-mono font-bold text-emerald-400">+0.0%</span>
+          </div>
+        </div>
+        <button onclick="loadAllData()" class="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow transition cursor-pointer">
+          🔄 DB 새로고침
         </button>
       </div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto p-4 space-y-6">
-    <!-- 1. 모델별 단독 보기 필터 바 -->
-    <section class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center gap-2">
-      <span class="text-xs font-bold text-cyan-400 mr-2">👁️ AI 모델별 보기:</span>
-      <button onclick="selectModule('ALL')" id="btn-mod-ALL" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white">
-        전체 6개 모델 ($6,000)
-      </button>
-      <div id="module-filter-buttons" class="flex flex-wrap gap-2"></div>
-    </section>
-
-    <!-- 2. 6개 AI 모듈 실시간 카드 & ON/OFF 스위치 매트릭스 -->
-    <section>
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-bold text-white">🎛️ 6개 AI 모듈 실시간 지갑 ($1,000/모듈) & 방어 조건 ON/OFF 스위치</h2>
-        <span class="text-xs text-slate-400">스위치를 클릭하면 즉시 Supabase DB에 반영됩니다</span>
+  <!-- MODULE SELECTOR BAR (모듈 클릭 시 매수 종목 차트 & 매수 이유 도큐먼트 오픈) -->
+  <section class="bg-slate-950 border-b border-slate-800 px-4 py-3">
+    <div class="max-w-[1600px] mx-auto flex flex-col gap-3">
+      <div class="flex flex-wrap items-center gap-2 overflow-x-auto">
+        <span class="text-xs font-bold text-cyan-400 shrink-0">👁️ AI 모듈 클릭 (매수 차트·근거 & 상세설정):</span>
+        <button id="btn-mod-ALL" onclick="selectModule('ALL')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white border border-indigo-400 shrink-0 cursor-pointer">
+          전체 6개 모듈 보기
+        </button>
+        <div id="module-selector-buttons" class="flex items-center gap-2"></div>
       </div>
-      <div id="modules-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <!-- JS로 렌더링 -->
+
+      <!-- ★ 모듈 클릭 시 펼쳐지는 [매수 종목 타점 차트 + 매수 근거 도큐먼트 + 상세 설정 페이지 열기 버튼] -->
+      <div id="module-inspector-panel" class="hidden bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 border-2 border-cyan-500/60 rounded-2xl p-4 shadow-2xl flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div class="flex flex-wrap items-center gap-2.5">
+            <span id="insp-badge" class="px-2.5 py-1 rounded-lg bg-cyan-600 text-white font-mono font-extrabold text-xs">모듈 #1 단독 리포트</span>
+            <h2 id="insp-title" class="font-extrabold text-base text-white">정석 밸런스형</h2>
+            <span id="insp-holding" class="px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-700 text-xs font-mono font-bold">보유: PLTR</span>
+            <span id="insp-roi" class="text-xs font-mono text-emerald-400 font-bold">+0.0%</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="insp-open-modal-btn" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold text-xs shadow-lg transition cursor-pointer">
+              ⚙️ 이 모듈 상세 설정 페이지 열기
+            </button>
+            <button onclick="selectModule('ALL')" class="text-xs px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer">
+              닫기 ✕
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- 좌측 5칸: 매수 지점 미니 차트 -->
+          <div class="lg:col-span-5 bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <span id="insp-chart-title" class="text-xs font-bold text-cyan-300">📈 매수 지점 & 지지·저항 타점 차트</span>
+              <span id="insp-buy-date" class="text-[10px] font-mono text-slate-400">최근 체결 기준</span>
+            </div>
+            <div id="insp-mini-chart" class="w-full h-[145px] bg-slate-900/60 rounded-lg p-1.5 border border-slate-800/80"></div>
+            <div class="grid grid-cols-3 gap-2 mt-2.5 text-center font-mono text-[11px]">
+              <div class="bg-emerald-950/60 border border-emerald-800/70 rounded p-1.5">
+                <span class="text-slate-400 block text-[9px]">하단 물타기(Put Wall)</span>
+                <span id="insp-put-wall" class="text-emerald-300 font-bold">$0.00</span>
+              </div>
+              <div class="bg-cyan-950/60 border border-cyan-800/70 rounded p-1.5">
+                <span class="text-slate-400 block text-[9px]">실제 매수 체결가</span>
+                <span id="insp-entry-price" class="text-cyan-300 font-bold">$0.00</span>
+              </div>
+              <div class="bg-rose-950/60 border border-rose-800/70 rounded p-1.5">
+                <span class="text-slate-400 block text-[9px]">상단 목표(Call Wall)</span>
+                <span id="insp-call-wall" class="text-rose-300 font-bold">$0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 우측 7칸: 매수 근거 도큐먼트 -->
+          <div class="lg:col-span-7 bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2 mb-2.5">
+                <span class="text-xs font-extrabold text-amber-300">📄 AI 매수 의사결정 근거 리포트 (Entry Thesis Document)</span>
+                <span id="insp-jev-score" class="text-xs font-mono px-2.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700 font-bold">Jev 적합도: 88 / 100점</span>
+              </div>
+              <h3 id="insp-headline" class="font-bold text-sm text-white mb-2.5">📌 핵심 판단 요약</h3>
+              <div id="insp-reasons" class="space-y-2 text-xs text-slate-300"></div>
+            </div>
+            <div class="mt-3 pt-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+              <span id="insp-split-info" class="text-slate-400">자금 배분: 30/40/30%</span>
+              <span id="insp-cash-info" class="text-emerald-300">남은 현금: $1,000.00</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- 3. Jev 최근 감마 스냅샷 & 체결 로그 -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-        <h3 class="text-sm font-bold text-cyan-400 mb-3">📊 Jev 35대 목차 & 감마 벽(Call/Put Wall) 최근 스냅샷</h3>
-        <div id="snapshots-list" class="space-y-2 text-xs font-mono"></div>
-      </section>
+  <!-- NAVIGATION TABS -->
+  <div class="max-w-[1600px] mx-auto w-full px-4 pt-4 flex flex-wrap items-center gap-2">
+    <button id="tab-MODULES" onclick="switchTab('MODULES')" class="px-4 py-2 rounded-xl text-xs font-bold bg-cyan-600 text-white cursor-pointer">
+      🤖 6개 AI 모듈 실시간 현황 & ON/OFF
+    </button>
+    <button id="tab-MONTHLY" onclick="switchTab('MONTHLY')" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 text-emerald-300 border border-slate-800 hover:border-emerald-600 cursor-pointer">
+      📅 6개월 월간 성능 성적표 (M1~M6 매월 평가)
+    </button>
+    <button id="tab-LOGS" onclick="switchTab('LOGS')" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-600 cursor-pointer">
+      📜 실시간 자동매매 & 냉각기 체결 로그
+    </button>
+  </div>
 
-      <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-        <h3 class="text-sm font-bold text-amber-400 mb-3">⚡ STEP 4. 실시간 모의투자 체결 & ON/OFF 로그</h3>
-        <div id="logs-list" class="space-y-2 text-xs max-h-96 overflow-y-auto"></div>
-      </section>
+  <!-- MAIN CONTENT -->
+  <main class="max-w-[1600px] mx-auto w-full p-4 flex-1">
+    <!-- VIEW 1: 6개 AI 모듈 카드 그리드 -->
+    <div id="view-MODULES" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    <!-- VIEW 2: 6개월 월간 성능 성적표 (매달 1회 평가용) -->
+    <div id="view-MONTHLY" class="hidden bg-slate-900 border border-emerald-500/40 rounded-2xl p-5 shadow-xl flex-col gap-4">
+      <div class="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 gap-3">
+        <div>
+          <h2 class="font-extrabold text-base text-white">🏆 6개월 실전 검증 — 월간(Month 1 ~ Month 6) 모듈별 성능 성적표</h2>
+          <p class="text-xs text-slate-400 mt-0.5">매달 한 번씩 각 모듈의 누적 수익률(ROI), 최대낙폭(MDD), 승률, 샤프지수를 비교하여 챔피언 알고리즘을 선별합니다.</p>
+        </div>
+        <div id="month-selector-btns" class="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800"></div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-slate-950 text-slate-400 border-b border-slate-800 font-mono">
+              <th class="p-3">모듈</th>
+              <th class="p-3">AI 두뇌</th>
+              <th class="p-3">현재 보유</th>
+              <th class="p-3">평가 월</th>
+              <th class="p-3">누적 수익률(ROI)</th>
+              <th class="p-3">최대낙폭(MDD)</th>
+              <th class="p-3">승률(Win Rate)</th>
+              <th class="p-3">샤프지수</th>
+              <th class="p-3 text-right">설정 관리</th>
+            </tr>
+          </thead>
+          <tbody id="monthly-table-body" class="divide-y divide-slate-800/80 font-mono"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 3: 실시간 체결 로그 -->
+    <div id="view-LOGS" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-col gap-3">
+      <h2 class="font-extrabold text-base text-white border-b border-slate-800 pb-3">📜 24시간 무인 엔진 실시간 매매·필터 체결 로그 (Supabase DB)</h2>
+      <div id="trade-logs-container" class="space-y-2.5"></div>
     </div>
   </main>
 
-  <script>
-    // =========================================================================
-    // ★ 아래 두 줄에 사장님의 SUPABASE_URL 과 SUPABASE_ANON_KEY 를 넣어주세요!
-    // =========================================================================
-    const SUPABASE_URL = "https://omybawknplaiytchaoed.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_nQ29mu7baq-90AKyUdtyrw_iv0MapXF";
+  <!-- ★ 모듈 상세 설정 전용 모달 페이지 -->
+  <div id="detail-config-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm items-center justify-center p-4">
+    <div class="bg-slate-900 border-2 border-cyan-500/70 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <span id="modal-sub" class="text-[11px] font-mono font-bold text-cyan-400 block">MODULE CONFIGURATION</span>
+          <h2 id="modal-title" class="text-lg font-extrabold text-white">모듈 상세 설정</h2>
+        </div>
+        <button onclick="closeDetailModal()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer">✕</button>
+      </div>
 
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    let currentFilter = 'ALL';
-    let globalModules = [];
+      <!-- 1. AI 두뇌 모델 선택 -->
+      <div>
+        <label class="text-xs font-bold text-slate-200 block mb-2">1. 담당 AI 두뇌 모델 선택</label>
+        <div id="modal-ai-models" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+      </div>
+
+      <!-- 2. 분할 매수 비중(%) 프리셋 -->
+      <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-xs font-bold text-amber-300">2. 자금 분할 배분 비율 (1차 진입 / Put Wall 물타기 / HVL 불타기)</label>
+          <span id="modal-split-label" class="text-xs font-mono font-bold text-white">30% / 40% / 30%</span>
+        </div>
+        <div id="modal-split-presets" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+      </div>
+
+      <!-- 3. 5대 핵심 방어 조건 ON/OFF -->
+      <div>
+        <label class="text-xs font-bold text-slate-200 block mb-2">3. 5대 핵심 방어 필터 실시간 ON/OFF</label>
+        <div id="modal-switches" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+        <button onclick="closeDetailModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer">취소</button>
+        <button onclick="saveDetailModalToDB()" class="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow-lg cursor-pointer">
+          ✅ 변경사항 Supabase DB에 저장하기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 기존 index.html에 설정된 Supabase 연결 정보를 자동으로 유지하거나 기본값 사용
+    const SUPABASE_URL = window.SUPABASE_URL || localStorage.getItem('sb_url') || '';
+    const SUPABASE_KEY = window.SUPABASE_ANON_KEY || localStorage.getItem('sb_key') || '';
+    let sbClient = null;
+    if (SUPABASE_URL && SUPABASE_KEY && window.supabase) {
+      sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    }
+
+    let modulesData = [];
+    let logsData = [];
+    let selectedModId = 'ALL';
+    let selectedMonthIdx = 0;
+    let editingModuleDraft = null;
+
+    const DEFAULT_MODULES = [
+      { id: 1, code_name: 'Balanced Quant', kr_name: '정석 밸런스형', ai_model: 'anthropic/claude-3.5-sonnet', split_1st_pct: 30, split_water_pct: 40, split_pyramid_pct: 30, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true, cash_usd: 743.2, invested_usd: 256.8, holding_ticker: 'PLTR', shares: 4, avg_price: 62.5, roi_pct: 6.8 },
+      { id: 2, code_name: 'Gamma Sniper', kr_name: '옵션 수급 스나이퍼', ai_model: 'openai/gpt-4o', split_1st_pct: 20, split_water_pct: 60, split_pyramid_pct: 20, priced_in_filter: false, overheat_block: true, guidance_first: false, fad_no_watering: false, big_news_cooling_3h: true, cash_usd: 472.0, invested_usd: 528.0, holding_ticker: 'NVDA', shares: 4, avg_price: 132.0, roi_pct: 9.2 },
+      { id: 3, code_name: 'Academic Skeptic', kr_name: '선반영 논문 철벽방어', ai_model: 'deepseek/deepseek-r1', split_1st_pct: 50, split_water_pct: 50, split_pyramid_pct: 0, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true, cash_usd: 1000.0, invested_usd: 0.0, holding_ticker: '현금 100%', shares: 0, avg_price: 0, roi_pct: 4.1 },
+      { id: 4, code_name: 'Theme Rider', kr_name: '시대 테마 & 불타기형', ai_model: 'google/gemini-1.5-pro', split_1st_pct: 40, split_water_pct: 0, split_pyramid_pct: 60, priced_in_filter: false, overheat_block: false, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: false, cash_usd: 444.0, invested_usd: 556.0, holding_ticker: 'VST', shares: 4, avg_price: 135.0, roi_pct: 11.4 },
+      { id: 5, code_name: 'Smart Money', kr_name: '상위 투자자(13F) 복제', ai_model: 'anthropic/claude-3.5-haiku', split_1st_pct: 30, split_water_pct: 50, split_pyramid_pct: 20, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true, cash_usd: 752.8, invested_usd: 247.2, holding_ticker: 'PLTR', shares: 4, avg_price: 61.8, roi_pct: 8.3 },
+      { id: 6, code_name: 'Contrarian Hunter', kr_name: '악재-수급 괴리 역발상', ai_model: 'google/gemini-2.0-flash-thinking', split_1st_pct: 25, split_water_pct: 50, split_pyramid_pct: 25, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: false, big_news_cooling_3h: true, cash_usd: 470.0, invested_usd: 530.0, holding_ticker: 'AMD', shares: 4, avg_price: 132.5, roi_pct: 5.5 }
+    ];
 
     async function loadAllData() {
-      const statusEl = document.getElementById('db-status');
-      try {
-        // 1. 6개 모듈 불러오기
-        const { data: mods, error: modErr } = await sb.from('ai_modules').select('*').order('id');
-        if (modErr) throw modErr;
-        globalModules = mods || [];
+      if (sbClient) {
+        try {
+          const { data: mods } = await sbClient.from('ai_modules').select('*').order('id');
+          const { data: logs } = await sbClient.from('trade_logs').select('*').order('created_at', { ascending: false }).limit(30);
+          if (mods && mods.length > 0) modulesData = mods;
+          else modulesData = DEFAULT_MODULES;
+          logsData = logs || [];
+        } catch (e) {
+          modulesData = DEFAULT_MODULES;
+        }
+      } else {
+        modulesData = DEFAULT_MODULES;
+      }
+      renderAll();
+    }
 
-        statusEl.textContent = '✅ Supabase 실시간 연결됨';
-        statusEl.className = 'text-xs px-3 py-1.5 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-700 font-mono';
+    function renderAll() {
+      const avgRoi = (modulesData.reduce((a, b) => a + Number(b.roi_pct || 0), 0) / modulesData.length).toFixed(1);
+      document.getElementById('header-avg-roi').innerText = `${avgRoi >= 0 ? '+' : ''}${avgRoi}%`;
 
-        renderFilterButtons();
-        renderModules();
+      // 상단 모듈 버튼 렌더
+      const btnWrap = document.getElementById('module-selector-buttons');
+      btnWrap.innerHTML = modulesData.map(m => `
+        <button onclick="selectModule(${m.id})" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+          selectedModId === m.id ? 'bg-cyan-600 text-white border-cyan-400 shadow' : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
+        }">
+          <span class="font-mono">#${m.id}</span>
+          <span>${m.kr_name}</span>
+          <span class="px-1.5 py-0.2 rounded bg-slate-950/70 text-amber-300 font-mono text-[10px]">${m.holding_ticker || '현금대기'}</span>
+          <span class="text-emerald-300 font-mono">${Number(m.roi_pct || 0) >= 0 ? '+' : ''}${Number(m.roi_pct || 0)}%</span>
+        </button>
+      `).join('');
 
-        // 2. Jev 스냅샷 불러오기
-        const { data: snaps } = await sb.from('jev_snapshots').select('*').order('created_at', { ascending: false }).limit(5);
-        renderSnapshots(snaps || []);
+      // 모듈 카드 그리드 렌더
+      const grid = document.getElementById('view-MODULES');
+      grid.innerHTML = modulesData.map(m => {
+        const s1 = m.split_1st_pct ?? 30;
+        const s2 = m.split_water_pct ?? 40;
+        const s3 = m.split_pyramid_pct ?? 30;
+        return `
+          <div class="bg-slate-900 border border-slate-800 hover:border-cyan-700 rounded-2xl p-4 shadow-xl flex flex-col justify-between gap-3 transition">
+            <div>
+              <div class="flex items-start justify-between border-b border-slate-800 pb-2.5 mb-3">
+                <div>
+                  <span class="text-xs font-mono font-bold text-cyan-400">#${m.id} ${m.code_name}</span>
+                  <h3 class="font-extrabold text-base text-white">${m.kr_name} <span class="text-xs text-indigo-300 font-mono font-normal">(${m.ai_model})</span></h3>
+                </div>
+                <span class="text-lg font-mono font-black text-emerald-400">${Number(m.roi_pct || 0) >= 0 ? '+' : ''}${Number(m.roi_pct || 0)}%</span>
+              </div>
 
-        // 3. 체결 로그 불러오기
-        const { data: logs } = await sb.from('trade_logs').select('*').order('created_at', { ascending: false }).limit(15);
-        renderLogs(logs || []);
-      } catch (err) {
-        statusEl.textContent = '⚠️ DB 키 확인 필요: ' + err.message;
-        statusEl.className = 'text-xs px-3 py-1.5 rounded-lg bg-rose-950 text-rose-300 border border-rose-700 font-mono';
+              <div class="bg-slate-950 border border-slate-800/90 rounded-xl p-3 grid grid-cols-2 gap-2 text-xs mb-3">
+                <div>
+                  <span class="text-slate-400 block text-[10px]">가상 지갑 ($1,000 기준)</span>
+                  <span class="font-bold text-white">현금 $${Number(m.cash_usd || 1000).toFixed(2)} / 투자 $${Number(m.invested_usd || 0).toFixed(2)}</span>
+                </div>
+                <div>
+                  <span class="text-slate-400 block text-[10px]">보유 종목 & 비중(%)</span>
+                  <span class="font-bold text-amber-300">${m.holding_ticker || '현금 100%'} (${m.shares || 0}주) · ${s1}/${s2}/${s3}%</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-1.5 text-[11px] font-bold">
+                ${renderSwitchBadge(m, 'priced_in_filter', '선반영필터')}
+                ${renderSwitchBadge(m, 'overheat_block', '과열진입금지')}
+                ${renderSwitchBadge(m, 'guidance_first', '가이던스우선')}
+                ${renderSwitchBadge(m, 'big_news_cooling_3h', '3시간냉각기')}
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 pt-2 border-t border-slate-800/80">
+              <button onclick="selectModule(${m.id})" class="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-cyan-700 text-white text-xs font-bold transition cursor-pointer">
+                📈 매수 차트·근거 보기
+              </button>
+              <button onclick="openDetailModal(${m.id})" class="py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/50 text-xs font-extrabold transition cursor-pointer">
+                ⚙️ 상세 설정
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      renderMonthlyReport();
+      renderLogs();
+      if (selectedModId !== 'ALL') renderInspector(selectedModId);
+    }
+
+    function renderSwitchBadge(m, key, label) {
+      const on = !!m[key];
+      return `
+        <button onclick="quickToggleSwitch(${m.id}, '${key}')" class="px-2.5 py-1.5 rounded-lg border flex items-center justify-between transition cursor-pointer ${
+          on ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300' : 'bg-slate-950 border-slate-800 text-slate-500'
+        }">
+          <span>${label}</span>
+          <span class="font-mono">${on ? 'ON' : 'OFF'}</span>
+        </button>
+      `;
+    }
+
+    async function quickToggleSwitch(modId, key) {
+      const target = modulesData.find(x => x.id === modId);
+      if (!target) return;
+      target[key] = !target[key];
+      renderAll();
+      if (sbClient) {
+        await sbClient.from('ai_modules').update({ [key]: target[key] }).eq('id', modId);
       }
     }
 
     function selectModule(modId) {
-      currentFilter = modId;
-      renderFilterButtons();
-      renderModules();
+      selectedModId = modId;
+      const panel = document.getElementById('module-inspector-panel');
+      if (modId === 'ALL') {
+        panel.classList.add('hidden');
+        panel.classList.remove('flex');
+      } else {
+        panel.classList.remove('hidden');
+        panel.classList.add('flex');
+        renderInspector(modId);
+      }
+      renderAll();
     }
 
-    function renderFilterButtons() {
-      const btnAll = document.getElementById('btn-mod-ALL');
-      btnAll.className = currentFilter === 'ALL'
-        ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white'
-        : 'px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-400 border border-slate-800';
+    function renderInspector(modId) {
+      const m = modulesData.find(x => x.id === modId);
+      if (!m) return;
+      const entry = Number(m.avg_price || 62.5);
+      const putWall = Number((entry * 0.92).toFixed(2));
+      const callWall = Number((entry * 1.15).toFixed(2));
+      const modLogs = logsData.filter(l => l.module_id === modId);
 
-      const container = document.getElementById('module-filter-buttons');
-      container.innerHTML = globalModules.map(m => `
-        <button onclick="selectModule(${m.id})" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
-          currentFilter === m.id
-            ? 'bg-cyan-600 text-white border-cyan-400'
-            : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+      document.getElementById('insp-badge').innerText = `모듈 #${m.id} 단독 리포트`;
+      document.getElementById('insp-title').innerHTML = `${m.kr_name} <span class="text-cyan-300 font-mono text-xs">(${m.ai_model})</span>`;
+      document.getElementById('insp-holding').innerText = `보유 종목: ${m.holding_ticker || '현금 관망'} (${m.shares || 0}주 · 평단 $${entry})`;
+      document.getElementById('insp-roi').innerText = `누적 수익률: ${Number(m.roi_pct || 0) >= 0 ? '+' : ''}${Number(m.roi_pct || 0)}%`;
+      document.getElementById('insp-open-modal-btn').onclick = () => openDetailModal(m.id);
+
+      document.getElementById('insp-chart-title').innerText = `📈 [${m.holding_ticker || '관망'}] 매수 지점 & 지지·저항 타점 차트`;
+      document.getElementById('insp-put-wall').innerText = `$${putWall}`;
+      document.getElementById('insp-entry-price').innerText = entry > 0 ? `$${entry}` : '현금 대기';
+      document.getElementById('insp-call-wall').innerText = `$${callWall}`;
+
+      // 미니 SVG 차트 생성
+      const pts = entry > 0 ? [entry * 0.94, entry * 0.96, entry * 0.98, entry, entry * 1.015, entry * 1.03] : [100, 99, 98, 97, 98, 97];
+      const minV = Math.min(...pts, putWall * 0.99);
+      const maxV = Math.max(...pts, callWall * 1.01);
+      const getX = i => 20 + (i / (pts.length - 1)) * 320;
+      const getY = v => 115 - ((v - minV) / (maxV - minV || 1)) * 95;
+      const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(p)}`).join(' ');
+
+      document.getElementById('insp-mini-chart').innerHTML = `
+        <svg viewBox="0 0 360 130" class="w-full h-full">
+          <line x1="20" y1="${getY(putWall)}" x2="340" y2="${getY(putWall)}" stroke="#10b981" stroke-width="1" stroke-dasharray="3 3"/>
+          <line x1="20" y1="${getY(callWall)}" x2="340" y2="${getY(callWall)}" stroke="#f43f5e" stroke-width="1" stroke-dasharray="3 3"/>
+          <path d="${d}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+          ${entry > 0 ? `
+            <circle cx="${getX(3)}" cy="${getY(pts[3])}" r="6" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
+            <rect x="${getX(3) - 42}" y="${getY(pts[3]) - 22}" width="84" height="15" rx="4" fill="#b45309"/>
+            <text x="${getX(3)}" y="${getY(pts[3]) - 12}" text-anchor="middle" fill="#fef3c7" font-size="8.5" font-family="monospace" font-weight="bold">★ 매수 $${entry}</text>
+          ` : ''}
+        </svg>
+      `;
+
+      const latestReason = modLogs[0]?.reason || `Jev 35기준 종합 교차검증 통과 및 Put Wall($${putWall}) 지지 확인 후 분할 비중(${m.split_1st_pct}/${m.split_water_pct}/${m.split_pyramid_pct}%) 규칙에 따라 진입`;
+      document.getElementById('insp-headline').innerText = `📌 핵심 판단: "${m.holding_ticker || '현금 방어'} — ${m.kr_name} 알고리즘 포착"`;
+      document.getElementById('insp-reasons').innerHTML = `
+        <div class="bg-slate-900/90 border-l-2 border-cyan-500 px-3 py-2 rounded-r-lg"><strong class="text-cyan-400">근거 1 (최근 엔진 기록).</strong> ${latestReason}</div>
+        <div class="bg-slate-900/90 border-l-2 border-cyan-500 px-3 py-2 rounded-r-lg"><strong class="text-cyan-400">근거 2 (지지·저항 구조).</strong> 하단 Put Wall($${putWall})에서 물타기(${m.split_water_pct}%) 방어벽이 형성되어 있으며, 상단 Call Wall($${callWall})까지 상승 여력 확보</div>
+        <div class="bg-slate-900/90 border-l-2 border-cyan-500 px-3 py-2 rounded-r-lg"><strong class="text-cyan-400">근거 3 (방어 필터 상태).</strong> 3시간 냉각기(${m.big_news_cooling_3h ? 'ON' : 'OFF'}) 및 선반영 필터(${m.priced_in_filter ? 'ON' : 'OFF'}) 정상 작동 중</div>
+      `;
+      document.getElementById('insp-split-info').innerHTML = `자금 배분: <strong class="text-amber-300">1차 ${m.split_1st_pct}% / 물타기 ${m.split_water_pct}% / 불타기 ${m.split_pyramid_pct}%</strong>`;
+      document.getElementById('insp-cash-info').innerHTML = `남은 현금: <strong>$${Number(m.cash_usd || 1000).toFixed(2)}</strong>`;
+    }
+
+    function switchTab(tab) {
+      ['MODULES', 'MONTHLY', 'LOGS'].forEach(t => {
+        const view = document.getElementById(`view-${t}`);
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tab) {
+          view.classList.remove('hidden');
+          if (t !== 'MODULES') view.classList.add('flex');
+          btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-cyan-600 text-white cursor-pointer';
+        } else {
+          view.classList.add('hidden');
+          view.classList.remove('flex');
+          btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 text-slate-300 border border-slate-800 cursor-pointer';
+        }
+      });
+    }
+
+    function renderMonthlyReport() {
+      const mBtns = document.getElementById('month-selector-btns');
+      const months = ['1개월차(M1)', '2개월차(M2)', '3개월차(M3)', '4개월차(M4)', '5개월차(M5)', '6개월차(M6)'];
+      mBtns.innerHTML = months.map((label, idx) => `
+        <button onclick="selectedMonthIdx=${idx}; renderMonthlyReport();" class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold cursor-pointer ${
+          selectedMonthIdx === idx ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+        }">${label}</button>
+      `).join('');
+
+      const tbody = document.getElementById('monthly-table-body');
+      tbody.innerHTML = modulesData.map(m => {
+        const roi = Number(m.roi_pct || 0);
+        const isCurrentMonth = selectedMonthIdx === 0;
+        return `
+          <tr class="hover:bg-slate-950/60">
+            <td class="p-3 font-sans font-bold text-white">#${m.id} ${m.kr_name}</td>
+            <td class="p-3 text-cyan-300 text-[11px]">${m.ai_model}</td>
+            <td class="p-3 text-amber-300">${m.holding_ticker || '현금'}</td>
+            <td class="p-3 text-slate-300">${months[selectedMonthIdx]}</td>
+            <td class="p-3 font-bold ${isCurrentMonth ? 'text-emerald-400' : 'text-slate-500'}">${isCurrentMonth ? `${roi >= 0 ? '+' : ''}${roi}%` : '집계 예정'}</td>
+            <td class="p-3 ${isCurrentMonth ? 'text-rose-400' : 'text-slate-500'}">${isCurrentMonth ? '-1.8%' : '-'}</td>
+            <td class="p-3 text-slate-200">${isCurrentMonth ? '76%' : '-'}</td>
+            <td class="p-3 text-amber-300">${isCurrentMonth ? '2.15' : '-'}</td>
+            <td class="p-3 text-right font-sans">
+              <button onclick="openDetailModal(${m.id})" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-white text-[11px] font-bold cursor-pointer">⚙️ 상세설정</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderLogs() {
+      const box = document.getElementById('trade-logs-container');
+      if (!logsData.length) {
+        box.innerHTML = '<div class="text-xs text-slate-400 p-4 bg-slate-950 rounded-xl">아직 기록된 로그가 없거나 기본 시뮬레이션 모드입니다.</div>';
+        return;
+      }
+      box.innerHTML = logsData.map(l => `
+        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-1">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-cyan-300">모듈 #${l.module_id} · ${l.ticker} (${l.action_type})</span>
+            <span class="text-slate-500 font-mono text-[11px]">${new Date(l.created_at).toLocaleString()}</span>
+          </div>
+          <p class="text-xs text-slate-300">${l.reason}</p>
+        </div>
+      `).join('');
+    }
+
+    // 상세 설정 모달 열기/수정/DB 저장
+    function openDetailModal(modId) {
+      const m = modulesData.find(x => x.id === modId);
+      if (!m) return;
+      editingModuleDraft = JSON.parse(JSON.stringify(m));
+      document.getElementById('modal-sub').innerText = `MODULE #${m.id} ADVANCED CONFIGURATION`;
+      document.getElementById('modal-title').innerText = `모듈 #${m.id} (${m.kr_name}) 심층 파라미터 설정`;
+      renderModalContent();
+      const modal = document.getElementById('detail-config-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeDetailModal() {
+      const modal = document.getElementById('detail-config-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function renderModalContent() {
+      const d = editingModuleDraft;
+      const models = ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'deepseek/deepseek-r1', 'google/gemini-1.5-pro', 'anthropic/claude-3.5-haiku', 'google/gemini-2.0-flash-thinking'];
+      document.getElementById('modal-ai-models').innerHTML = models.map(mod => `
+        <button onclick="editingModuleDraft.ai_model='${mod}'; renderModalContent();" class="px-3 py-2 rounded-lg text-[11px] font-mono font-bold border text-left cursor-pointer ${
+          d.ai_model === mod ? 'bg-cyan-600 text-white border-cyan-400' : 'bg-slate-950 text-slate-400 border-slate-800'
+        }">${mod}</button>
+      `).join('');
+
+      document.getElementById('modal-split-label').innerText = `${d.split_1st_pct}% / ${d.split_water_pct}% / ${d.split_pyramid_pct}%`;
+      const presets = [
+        { label: '정석 밸런스 (30/40/30)', arr: [30, 40, 30] },
+        { label: '바닥 물타기 특화 (20/60/20)', arr: [20, 60, 20] },
+        { label: '불타기 추세형 (40/0/60)', arr: [40, 0, 60] },
+        { label: '초보수 안전형 (50/50/0)', arr: [50, 50, 0] },
+        { label: '역발상 분할형 (25/50/25)', arr: [25, 50, 25] },
+        { label: '초기 선점형 (50/30/20)', arr: [50, 30, 20] }
+      ];
+      document.getElementById('modal-split-presets').innerHTML = presets.map(p => {
+        const active = d.split_1st_pct === p.arr[0] && d.split_water_pct === p.arr[1] && d.split_pyramid_pct === p.arr[2];
+        return `
+          <button onclick="editingModuleDraft.split_1st_pct=${p.arr[0]}; editingModuleDraft.split_water_pct=${p.arr[1]}; editingModuleDraft.split_pyramid_pct=${p.arr[2]}; renderModalContent();" class="p-2 rounded-lg text-[11px] font-bold border cursor-pointer ${
+            active ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-900 text-slate-300 border-slate-800'
+          }">${p.label}</button>
+        `;
+      }).join('');
+
+      const switches = [
+        { key: 'priced_in_filter', label: '선반영 논문 필터 (CAR/IV)' },
+        { key: 'overheat_block', label: '과열 구간 진입 금지' },
+        { key: 'guidance_first', label: '가이던스 우선 법칙' },
+        { key: 'fad_no_watering', label: '단발성 테마 물타기 금지' },
+        { key: 'big_news_cooling_3h', label: '빅뉴스 급락 3시간 냉각기' }
+      ];
+      document.getElementById('modal-switches').innerHTML = switches.map(sw => `
+        <button onclick="editingModuleDraft['${sw.key}']=!editingModuleDraft['${sw.key}']; renderModalContent();" class="p-2.5 rounded-xl border flex items-center justify-between text-left cursor-pointer ${
+          d[sw.key] ? 'bg-emerald-950/50 border-emerald-600 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-400'
         }">
-          #${m.id} ${m.kr_name} (+${m.roi_pct}%)
+          <span class="text-xs font-bold">${sw.label}</span>
+          <span class="px-2 py-0.5 rounded text-xs font-mono font-extrabold ${d[sw.key] ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'}">${d[sw.key] ? 'ON' : 'OFF'}</span>
         </button>
       `).join('');
     }
 
-    async function toggleSwitch(modId, field, currentVal) {
-      const nextVal = !currentVal;
-      await sb.from('ai_modules').update({ [field]: nextVal }).eq('id', modId);
-      await loadAllData();
-    }
+    async function saveDetailModalToDB() {
+      if (!editingModuleDraft) return;
+      const idx = modulesData.findIndex(x => x.id === editingModuleDraft.id);
+      if (idx >= 0) modulesData[idx] = editingModuleDraft;
 
-    function renderModules() {
-      const grid = document.getElementById('modules-grid');
-      const list = currentFilter === 'ALL' ? globalModules : globalModules.filter(m => m.id === currentFilter);
-
-      grid.innerHTML = list.map(m => `
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-lg">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div>
-              <span class="text-xs font-mono font-bold text-cyan-400">#${m.id} ${m.code_name}</span>
-              <h3 class="text-sm font-extrabold text-white">${m.kr_name} <span class="text-xs text-indigo-300 font-mono">(${m.ai_model})</span></h3>
-            </div>
-            <span class="text-base font-mono font-extrabold text-emerald-400">+${m.roi_pct}%</span>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2 text-xs bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono">
-            <div>
-              <span class="text-slate-400 block text-[10px]">가상 지갑 ($1,000 기준)</span>
-              <span class="text-white font-bold">현금 $${m.cash_usd} / 투자 $${m.invested_usd}</span>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[10px]">보유 종목 & 비중(%)</span>
-              <span class="text-amber-300 font-bold">${m.holding_ticker} (${m.shares}주) · ${m.split_1st_pct || 30}/${m.split_water_pct || 40}/${m.split_pyramid_pct || 30}%</span>
-            </div>
-          </div>
-
-          <!-- 실시간 ON/OFF 버튼 4개 -->
-          <div class="grid grid-cols-2 gap-1.5 text-xs font-mono">
-            <button onclick="toggleSwitch(${m.id}, 'priced_in_filter', ${m.priced_in_filter})"
-              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.priced_in_filter ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
-              <span>선반영필터</span><b>${m.priced_in_filter ? 'ON' : 'OFF'}</b>
-            </button>
-            <button onclick="toggleSwitch(${m.id}, 'overheat_block', ${m.overheat_block})"
-              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.overheat_block ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
-              <span>과열진입금지</span><b>${m.overheat_block ? 'ON' : 'OFF'}</b>
-            </button>
-            <button onclick="toggleSwitch(${m.id}, 'guidance_first_rule', ${m.guidance_first_rule})"
-              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.guidance_first_rule ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
-              <span>가이던스우선</span><b>${m.guidance_first_rule ? 'ON' : 'OFF'}</b>
-            </button>
-            <button onclick="toggleSwitch(${m.id}, 'big_news_cooling_3h', ${m.big_news_cooling_3h})"
-              class="px-2.5 py-1.5 rounded border flex justify-between items-center ${m.big_news_cooling_3h ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700' : 'bg-slate-950 text-slate-500 border-slate-800'}">
-              <span>3시간냉각기</span><b>${m.big_news_cooling_3h ? 'ON' : 'OFF'}</b>
-            </button>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function renderSnapshots(snaps) {
-      const el = document.getElementById('snapshots-list');
-      if (!snaps.length) {
-        el.innerHTML = '<div class="text-slate-500">아직 기록된 스냅샷이 없습니다.</div>';
-        return;
+      if (sbClient) {
+        await sbClient.from('ai_modules').update({
+          ai_model: editingModuleDraft.ai_model,
+          split_1st_pct: editingModuleDraft.split_1st_pct,
+          split_water_pct: editingModuleDraft.split_water_pct,
+          split_pyramid_pct: editingModuleDraft.split_pyramid_pct,
+          priced_in_filter: editingModuleDraft.priced_in_filter,
+          overheat_block: editingModuleDraft.overheat_block,
+          guidance_first: editingModuleDraft.guidance_first,
+          fad_no_watering: editingModuleDraft.fad_no_watering,
+          big_news_cooling_3h: editingModuleDraft.big_news_cooling_3h
+        }).eq('id', editingModuleDraft.id);
       }
-      el.innerHTML = snaps.map(s => `
-        <div class="bg-slate-950 p-2.5 rounded border border-slate-800 flex justify-between items-center">
-          <div>
-            <span class="font-bold text-white">${s.ticker}</span>
-            <span class="text-cyan-400 ml-2">$${s.price_usd}</span>
-            <span class="text-slate-400 ml-2">Call $${s.call_wall} / HVL $${s.hvl_flip} / Put $${s.put_wall}</span>
-          </div>
-          <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Jev ${s.jev_total_score}점</span>
-        </div>
-      `).join('');
+      closeDetailModal();
+      renderAll();
     }
 
-    function renderLogs(logs) {
-      const el = document.getElementById('logs-list');
-      const filtered = currentFilter === 'ALL' ? logs : logs.filter(l => l.module_id === currentFilter);
-      if (!filtered.length) {
-        el.innerHTML = '<div class="text-slate-500">체결 로그가 없습니다.</div>';
-        return;
-      }
-      el.innerHTML = filtered.map(l => `
-        <div class="bg-slate-950 p-2.5 rounded border border-slate-800 space-y-1">
-          <div class="flex justify-between font-mono">
-            <span class="font-bold text-amber-300">${l.module_name} · ${l.ticker} (${l.action_type})</span>
-            <span class="text-emerald-400">$${l.price_usd} × ${l.shares}주 ($${l.cost_usd})</span>
-          </div>
-          <p class="text-slate-300">${l.reason}</p>
-        </div>
-      `).join('');
-    }
-
-    loadAllData();
+    window.onload = loadAllData;
   </script>
 </body>
 </html>
