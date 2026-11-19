@@ -261,7 +261,7 @@
     // =========================================================================
     const SUPABASE_URL = 'https://omybawknplaiytchaoed.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_nQ29mu7baq-90AKyUdtyrw_iv0MapXF';
-    const FINNHUB_WS_KEY = 'dbt7f1hr01qnliutkub0dbt7f1hr01qnliutkubg';// 기존에 발급받으신 Finnhub 키 입력 시 0.1초 WebSocket 실시간 연동
+    const FINNHUB_WS_KEY = 'dbt7f1hr01qnliutkub0dbt7f1hr01qnliutkubg'; // 기존에 발급받으신 Finnhub 키 입력 시 0.1초 WebSocket 실시간 연동
 
     const sb = (SUPABASE_URL && SUPABASE_KEY) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
@@ -530,6 +530,11 @@
       const callWall = entry > 0 ? Number((entry * 1.14).toFixed(2)) : 72.0;
       const modLogs = logsData.filter(l => l.module_id === modId);
       const roi = Number(m.roi_pct || 0);
+      const validTrades = modLogs.filter(l => (l.shares || 0) > 0 || (l.action_type || '').includes('BUY') || (l.action_type || '').includes('WATER') || (l.action_type || '').includes('PYRAMID'));
+      const rawDate = validTrades[0]?.created_at || m.updated_at || m.created_at;
+      const formattedBuyTime = entry > 0
+        ? (rawDate ? new Date(rawDate).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '최근 정각 세션')
+        : '현금 대기 중';
 
       document.getElementById('insp-badge').innerText = `모듈 #${m.id}`;
       document.getElementById('insp-title').innerHTML = `${m.kr_name} <span class="text-[#8B95A1] font-mono text-xs font-normal">(${m.ai_model})</span>`;
@@ -540,11 +545,12 @@
       document.getElementById('insp-open-modal-btn').onclick = () => openDetailModal(m.id);
 
       document.getElementById('insp-chart-title').innerText = `[${m.holding_ticker || '관망'}] 매수 지점 & 실시간 주가($${curPrice.toFixed(2)}) 차트`;
+      document.getElementById('insp-buy-date').innerText = entry > 0 ? `매수 일시: ${formattedBuyTime}` : '현금 관망 중';
       document.getElementById('insp-put-wall').innerText = `$${putWall}`;
       document.getElementById('insp-entry-price').innerText = entry > 0 ? `$${entry} → $${curPrice.toFixed(2)}` : '현금 대기';
       document.getElementById('insp-call-wall').innerText = `$${callWall}`;
 
-      // 미니 SVG 차트 생성 (실시간 주가 끝점 반영)
+      // 미니 SVG 차트 생성 (실시간 주가 끝점 + 매수 날짜/시간 라벨 반영)
       const pts = entry > 0 ? [entry * 0.94, entry * 0.96, entry * 0.98, entry, (entry + curPrice) / 2, curPrice] : [100, 99, 98, 97, 98, 97];
       const minV = Math.min(...pts, putWall * 0.99);
       const maxV = Math.max(...pts, callWall * 1.01);
@@ -560,8 +566,9 @@
           ${entry > 0 ? `
             <line x1="20" y1="${getY(pts[5])}" x2="340" y2="${getY(pts[5])}" stroke="#00C471" stroke-width="1" stroke-dasharray="2 2" opacity="0.6"/>
             <circle cx="${getX(3)}" cy="${getY(pts[3])}" r="5.5" fill="#F04452" stroke="#fff" stroke-width="1.5"/>
-            <rect x="${getX(3) - 42}" y="${getY(pts[3]) - 22}" width="84" height="15" rx="4" fill="#F04452"/>
+            <rect x="${getX(3) - 46}" y="${getY(pts[3]) - 22}" width="92" height="15" rx="4" fill="#F04452"/>
             <text x="${getX(3)}" y="${getY(pts[3]) - 12}" text-anchor="middle" fill="#ffffff" font-size="8.5" font-family="monospace" font-weight="bold">매수 $${entry}</text>
+            <text x="${getX(3)}" y="${Math.min(126, getY(pts[3]) + 14)}" text-anchor="middle" fill="#8B95A1" font-size="7.5" font-family="monospace">${formattedBuyTime}</text>
             <circle cx="${getX(5)}" cy="${getY(pts[5])}" r="5" fill="#00C471" stroke="#fff" stroke-width="1.5"/>
             <rect x="${getX(5) - 76}" y="${Math.max(2, getY(pts[5]) - 22)}" width="80" height="15" rx="4" fill="#00C471"/>
             <text x="${getX(5) - 36}" y="${Math.max(12, getY(pts[5]) - 12)}" text-anchor="middle" fill="#101012" font-size="8.5" font-family="monospace" font-weight="bold">현재 $${curPrice.toFixed(2)}</text>
@@ -572,11 +579,10 @@
       // ★ 차트 바로 아래: 몇 월 며칠에 몇 주 샀는지 거래 내역 렌더
       const tbody = document.getElementById('insp-trade-history-body');
       const countLabel = document.getElementById('insp-trade-count');
-      const validTrades = modLogs.filter(l => (l.shares || 0) > 0 || (l.action_type || '').includes('BUY') || (l.action_type || '').includes('WATER') || (l.action_type || '').includes('PYRAMID'));
       if (validTrades.length > 0) {
         countLabel.innerText = `총 ${validTrades.length}건`;
         tbody.innerHTML = validTrades.map(tr => {
-          const dt = tr.created_at ? new Date(tr.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '최근 체결';
+          const dt = tr.created_at ? new Date(tr.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : formattedBuyTime;
           const sh = Number(tr.shares || m.shares || 1);
           const pr = Number(tr.price || entry || 0);
           const tot = (sh * pr).toFixed(2);
@@ -595,7 +601,7 @@
         countLabel.innerText = '총 1건';
         tbody.innerHTML = `
           <tr class="hover:bg-[#1B1B20]">
-            <td class="py-1.5 px-2.5 text-[#B0B8C1]">최근 정각 세션</td>
+            <td class="py-1.5 px-2.5 text-[#B0B8C1]">${formattedBuyTime}</td>
             <td class="py-1.5 px-2 font-sans font-bold text-[#F04452]">1차 분할매수</td>
             <td class="py-1.5 px-2 font-bold text-white">${m.holding_ticker}</td>
             <td class="py-1.5 px-2 text-right text-white font-bold">${m.shares}주</td>
