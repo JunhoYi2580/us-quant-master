@@ -530,10 +530,15 @@
       const callWall = entry > 0 ? Number((entry * 1.14).toFixed(2)) : 72.0;
       const modLogs = logsData.filter(l => l.module_id === modId);
       const roi = Number(m.roi_pct || 0);
-      const validTrades = modLogs.filter(l => (l.shares || 0) > 0 || (l.action_type || '').includes('BUY') || (l.action_type || '').includes('WATER') || (l.action_type || '').includes('PYRAMID'));
-      const rawDate = validTrades[0]?.created_at || m.updated_at || m.created_at;
+      const validTrades = modLogs.filter(l => {
+        const act = (l.action_type || '').toUpperCase();
+        return (l.shares || 0) > 0 || act.includes('BUY') || act.includes('WATER') || act.includes('PYRAMID') || act.includes('매수') || act.includes('분할');
+      });
+      const fallbackDate = new Date();
+      fallbackDate.setMinutes(0, 0, 0);
+      const rawDate = validTrades[0]?.created_at || validTrades[0]?.timestamp || m.bought_at || m.updated_at || m.created_at || fallbackDate.toISOString();
       const formattedBuyTime = entry > 0
-        ? (rawDate ? new Date(rawDate).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '최근 정각 세션')
+        ? new Date(rawDate).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
         : '현금 대기 중';
 
       document.getElementById('insp-badge').innerText = `모듈 #${m.id}`;
