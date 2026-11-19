@@ -1,34 +1,29 @@
-name: US Quant 6-Modules 24H Auto Runner
+name: 24H US Quant Engine
 
 on:
   schedule:
-    # 월요일~금요일 24시간 내내 매시간 정각(0분)마다 자동 실행 (데이장 + 프리장 + 본장 + 애프터장 풀커버)
-    # 만약 30분마다 더 촘촘하게 돌리고 싶다면 '0 * * * 1-5'를 '*/30 * * * 1-5'로 바꾸시면 됩니다!
-    - cron: '0 * * * 1-5'
-  workflow_dispatch: # 언제든 버튼 눌러 수동 즉시 실행 가능
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
-  run-quant-engine:
+  run-quant-pipeline:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --no-save @supabase/supabase-js
 
-      - name: Run 6-Modules Quant Engine (24H Full Session)
+      - name: Run 4-Stage Pipeline
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
-          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
-        run: node engine/run_6modules_quant.mjs
+        run: node engine.js
