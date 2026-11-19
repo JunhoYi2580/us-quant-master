@@ -261,7 +261,7 @@
     // =========================================================================
     const SUPABASE_URL = 'https://omybawknplaiytchaoed.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_nQ29mu7baq-90AKyUdtyrw_iv0MapXF';
-    const FINNHUB_WS_KEY = 'dbt7f1hr01qnliutkub0dbt7f1hr01qnliutkubg'; // 기존에 발급받으신 Finnhub 키 입력 시 0.1초 WebSocket 실시간 연동
+    const FINNHUB_WS_KEY = 'dbt7f1hr01qnliutkub0dbt7f1hr01qnliutkubg';// 기존에 발급받으신 Finnhub 키 입력 시 0.1초 WebSocket 실시간 연동
 
     const sb = (SUPABASE_URL && SUPABASE_KEY) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
@@ -319,17 +319,24 @@
       modulesData = modulesData.map(m => {
         const sym = (m.holding_ticker || '').trim().toUpperCase();
         const shares = Number(m.shares || 0);
+        const avgPrice = Number(m.avg_price_usd || 0);
         const cash = Number(m.cash_usd ?? 1000);
-        const currentPrice = livePricesMap[sym] || Number(m.avg_price_usd || 0);
+        const currentPrice = livePricesMap[sym] || avgPrice;
 
-        if (shares > 0 && currentPrice > 0) {
+        if (shares > 0 && currentPrice > 0 && avgPrice > 0) {
+          // 1) 실제 보유 주식 평가손익 = (현재 주가 - 실제 매수 평단가) × 보유 주수
+          const unrealizedPnl = (currentPrice - avgPrice) * shares;
+          // 2) 기존 실현 손익 (초기 $1,000 대비 원금 보전 체크: 비정상 중복 입금 방어)
+          const rawTotalCost = cash + (avgPrice * shares);
+          const realizedPnl = Math.abs(rawTotalCost - 1000) > 500 ? 0 : (rawTotalCost - 1000);
+
           const evalStockValue = shares * currentPrice;
-          const totalEquity = cash + evalStockValue;
-          const liveRoi = Number((((totalEquity - 1000) / 1000) * 100).toFixed(2));
+          const liveRoi = Number((((realizedPnl + unrealizedPnl) / 1000) * 100).toFixed(2));
           return { ...m, live_price_usd: currentPrice, eval_stock_usd: evalStockValue, roi_pct: liveRoi };
         }
-        // 보유 주식이 0주(현금 관망)일 때는 현금 잔고($1,000 기준)에서 실제 실현 손익만 계산
-        const cashOnlyRoi = Number((((cash - 1000) / 1000) * 100).toFixed(2));
+        // 보유 주식이 0주(현금 관망)일 때는 현금 잔고($1,000 기준)에서 실제 실현 손익만 계산 (비정상 잔고 보정 포함)
+        const safeCash = Math.abs(cash - 1000) > 500 ? 1000 : cash;
+        const cashOnlyRoi = Number((((safeCash - 1000) / 1000) * 100).toFixed(2));
         return { ...m, live_price_usd: 0, eval_stock_usd: 0, roi_pct: cashOnlyRoi };
       });
     }
