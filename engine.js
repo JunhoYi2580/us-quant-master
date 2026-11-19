@@ -18,8 +18,13 @@ if (missingVars.length > 0) {
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 미국 상위 핵심 감시 종목 풀
-const WATCHLIST = ['PLTR', 'NVDA', 'VST', 'AMD', 'SOFI', 'RKLB', 'AAPL', 'MSFT', 'TSLA', 'META'];
+// Supabase watchlist 테이블 미생성 시 사용하는 기본 20개 미국 핵심 종목 풀
+const DEFAULT_WATCHLIST = [
+  'PLTR', 'NVDA', 'VST', 'AMD', 'SOFI',
+  'RKLB', 'AAPL', 'MSFT', 'TSLA', 'META',
+  'GOOGL', 'AMZN', 'AVGO', 'TSM', 'CEG',
+  'IONQ', 'SMCI', 'COIN', 'UBER', 'HOOD',
+];
 
 // =========================================================================
 // 자동 발동 기준 상수 (이 기준을 충족할 때만 4단계 파이프라인 자동 점화)
@@ -30,12 +35,54 @@ const TRIGGER_CRITERIA = {
   MIN_INTRADAY_RANGE_PCT: 3.5, // 기준 3: 일중 고저 변동폭 3.5% 이상 확대
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // =========================================================================
-// [경량 감시] 실시간 시세 조회 (Finnhub Quote API)
+// [감시 종목 로드] Supabase watchlist 테이블에서 사용자 활성(ON) 종목 조회
 // =========================================================================
-async function fetchLightweightQuotes() {
+async function loadActiveWatchlist(modules) {
+  let activeSymbols = [];
+
+  try {
+    const { data, error } = await sb
+      .from('watchlist')
+      .select('symbol')
+      .eq('is_active', true)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    if (Array.isArray(data) && data.length > 0) {
+      activeSymbols = data
+        .map((row) => String(row.symbol || '').trim().toUpperCase())
+        .filter((s) => /^[A-Z.-]{1,10}$/.test(s));
+    }
+  } catch (e) {
+    console.warn(`[Watchlist Fallback] Supabase watchlist 조회 실패 -> 기본 20종목 사용 (${e.message})`);
+  }
+
+  if (activeSymbols.length === 0) {
+    activeSymbols = [...DEFAULT_WATCHLIST];
+  }
+
+  // 이미 보유 중인 종목은 사용자가 목록에서 끄더라도 평가·물타기·불타기 관리를 위해 자동 포함
+  const heldSymbols = modules
+    .filter((m) => Number(m.shares || 0) > 0 && m.holding_ticker && m.holding_ticker !== '현금관망')
+    .map((m) => String(m.holding_ticker).trim().toUpperCase())
+    .filter((s) => /^[A-Z.-]{1,10}$/.test(s));
+
+  const merged = [...new Set([...activeSymbols, ...heldSymbols])];
+  console.log(`[Watchlist] 총 ${merged.length}개 종목 감시 시작: ${merged.join(', ')}`);
+  return merged;
+}
+
+// =========================================================================
+// [경량 감시] 실시간 시세 조회 (Finnhub Quote API · 무료 한도 보호 지연 적용)
+// =========================================================================
+async function fetchLightweightQuotes(symbols) {
   const quotes = [];
-  for (const symbol of WATCHLIST) {
+  const delayMs = symbols.length > 15 ? 120 : 0;
+
+  for (const symbol of symbols) {
     try {
       const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`);
       const q = await res.json();
@@ -49,8 +96,8 @@ async function fetchLightweightQuotes() {
 
         // 1차 감마 벽 추정치 (게이트 판독용)
         const putWall = Number((low * 0.97).toFixed(2));
-        const callWall = Number((high * 1.06).toFixed(2));
-        const hvlFlip = Number(((putWall + callWall) / 2).toFixed(2));
+        const callWall = Number((high * 1.04).toFixed(2));
+        const hvlFlip = Number(((low + high) / 2).toFixed(2));
 
         quotes.push({
           symbol,
@@ -68,6 +115,8 @@ async function fetchLightweightQuotes() {
     } catch (e) {
       console.error(`[Quote Watch Error] ${symbol}:`, e.message);
     }
+
+    if (delayMs > 0) await sleep(delayMs);
   }
   return quotes;
 }
@@ -96,7 +145,7 @@ function evaluateTriggerCriteria(quotes, modules) {
       reasons.push(`급등락(${q.changePct > 0 ? '+' : ''}${q.changePct}%)`);
     }
 
-    // 기준 2: 핵심 감마 벽(Put Wall / Call Wall) 근접 또는 HVL 돌파
+    // 기준 2: 핵심 감마 벽(Put Wall / Call Wall) 근접 또는 보유종목 HVL 돌파
     const distToPutPct = ((q.price - q.putWall) / q.price) * 100;
     const distToCallPct = ((q.callWall - q.price) / q.price) * 100;
 
@@ -134,26 +183,45 @@ function evaluateTriggerCriteria(quotes, modules) {
 }
 
 // =========================================================================
-// [STEP 1] 기준 충족 종목 심층 데이터 & 최신 뉴스 수집
+// [STEP 1] 기준 충족 종목 심층 데이터 & 최신 뉴스 수집 (API 한도 보호)
 // =========================================================================
-async function step1_collectDeepData(targetQuotes) {
+async function step1_collectDeepData(targetQuotes, modules) {
   const today = new Date();
   const fromDate = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const toDate = today.toISOString().slice(0, 10);
 
+  const heldSet = new Set(
+    modules
+      .filter((m) => Number(m.shares || 0) > 0 && m.holding_ticker && m.holding_ticker !== '현금관망')
+      .map((m) => m.holding_ticker.toUpperCase())
+  );
+
+  // 보유 종목 + 변동성 큰 종목 위주로 최대 20개까지 뉴스 수집 (Finnhub 무료 분당 60회 보호)
+  const prioritized = [...targetQuotes].sort((a, b) => {
+    const aHeld = heldSet.has(a.symbol) ? 1 : 0;
+    const bHeld = heldSet.has(b.symbol) ? 1 : 0;
+    if (aHeld !== bHeld) return bHeld - aHeld;
+    return Math.abs(b.changePct) - Math.abs(a.changePct);
+  });
+
+  const newsTargets = new Set(prioritized.slice(0, 20).map((q) => q.symbol));
   const enriched = [];
+
   for (const item of targetQuotes) {
     let headlines = [];
-    try {
-      const res = await fetch(
-        `https://finnhub.io/api/v1/company-news?symbol=${item.symbol}&from=${fromDate}&to=${toDate}&token=${FINNHUB_API_KEY}`
-      );
-      const newsArr = await res.json();
-      if (Array.isArray(newsArr)) {
-        headlines = newsArr.slice(0, 3).map((n) => n.headline).filter(Boolean);
+    if (newsTargets.has(item.symbol)) {
+      try {
+        const res = await fetch(
+          `https://finnhub.io/api/v1/company-news?symbol=${item.symbol}&from=${fromDate}&to=${toDate}&token=${FINNHUB_API_KEY}`
+        );
+        const newsArr = await res.json();
+        if (Array.isArray(newsArr)) {
+          headlines = newsArr.slice(0, 3).map((n) => n.headline).filter(Boolean);
+        }
+      } catch (e) {
+        console.warn(`[STEP 1 News Skip] ${item.symbol}:`, e.message);
       }
-    } catch (e) {
-      console.warn(`[STEP 1 News Skip] ${item.symbol}:`, e.message);
+      await sleep(140);
     }
     enriched.push({ ...item, headlines });
   }
@@ -234,7 +302,9 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
     const shares = Number(mod.shares || 0);
     const avgPrice = Number(mod.avg_price_usd || 0);
 
+    // ---------------------------------------------------------------------
     // CASE 1: 이미 보유 중인 모듈 -> 물타기(Put Wall) / 불타기(HVL) 조건 판정
+    // ---------------------------------------------------------------------
     if (shares > 0 && mod.holding_ticker && mod.holding_ticker !== '현금관망') {
       const held = refinedList.find((x) => x.symbol === mod.holding_ticker.toUpperCase());
       if (!held) continue;
@@ -244,6 +314,7 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
         continue;
       }
 
+      // 물타기 조건: Put Wall 근접 & 평단 대비 -4% 이하 & 잔여 현금 충분
       const waterPct = Number(mod.split_water_pct || 0);
       if (waterPct > 0 && held.price <= avgPrice * 0.96 && held.price >= held.putWall * 0.99 && cash >= held.price) {
         const allocUsd = Math.min(cash, 1000 * (waterPct / 100));
@@ -256,7 +327,7 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
           const evalUsd = Number((newShares * held.price).toFixed(2));
           const roiPct = Number((((newCash + evalUsd - 1000) / 1000) * 100).toFixed(2));
 
-          await sb
+          const { error: uErr } = await sb
             .from('modules')
             .update({
               cash_usd: newCash,
@@ -267,6 +338,11 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
               updated_at: nowIso,
             })
             .eq('id', mod.id);
+
+          if (uErr) {
+            console.error(`[모듈 #${mod.id} 물타기 DB 오류]`, uErr.message);
+            continue;
+          }
 
           await sb.from('trade_logs').insert({
             module_id: mod.id,
@@ -282,6 +358,7 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
         }
       }
 
+      // 불타기 조건: HVL 돌파 + 평단 대비 +3% 이상 수익 + 과열 아님
       const pyramidPct = Number(mod.split_pyramid_pct || 0);
       if (
         pyramidPct > 0 &&
@@ -300,7 +377,7 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
           const evalUsd = Number((newShares * held.price).toFixed(2));
           const roiPct = Number((((newCash + evalUsd - 1000) / 1000) * 100).toFixed(2));
 
-          await sb
+          const { error: uErr } = await sb
             .from('modules')
             .update({
               cash_usd: newCash,
@@ -311,6 +388,11 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
               updated_at: nowIso,
             })
             .eq('id', mod.id);
+
+          if (uErr) {
+            console.error(`[모듈 #${mod.id} 불타기 DB 오류]`, uErr.message);
+            continue;
+          }
 
           await sb.from('trade_logs').insert({
             module_id: mod.id,
@@ -327,9 +409,11 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
       continue;
     }
 
+    // ---------------------------------------------------------------------
     // CASE 2: 현금 관망 모듈 -> 방어 필터(ON/OFF) 검증 후 1차 분할 진입
+    // ---------------------------------------------------------------------
     const candidates = refinedList.filter((s) => {
-      if (s.price * 2 > cash) return false;
+      if (s.price * 2 > cash) return false; // 최소 2주 매수 원칙
       if (mod.overheat_block && s.isOverheated) return false;
       if (mod.priced_in_filter && s.isPricedInRisk) return false;
       if (mod.big_news_cooling_3h && s.isBigNewsCrash) return false;
@@ -337,28 +421,43 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
       return true;
     });
 
-    if (candidates.length === 0) continue;
+    if (candidates.length === 0) {
+      console.log(`[모듈 #${mod.id}] 방어 필터 통과 후보 종목 없음 (관망 유지)`);
+      continue;
+    }
+
+    // Jev 점수 높은 순으로 기본 정렬
+    const sortedCandidates = [...candidates].sort((a, b) => b.jevScore - a.jevScore);
 
     let pick = null;
-    if (mod.id === 1) pick = candidates.find((s) => s.jevScore >= 78);
-    if (mod.id === 2) pick = candidates.find((s) => s.price >= s.hvlFlip);
-    if (mod.id === 3) pick = candidates.find((s) => s.changePct <= 1.5 && s.jevScore >= 80);
+    if (mod.id === 1) pick = sortedCandidates.find((s) => s.jevScore >= 75) || sortedCandidates[0];
+    if (mod.id === 2) pick = sortedCandidates.find((s) => s.price >= s.hvlFlip) || sortedCandidates[0];
+    if (mod.id === 3) pick = sortedCandidates.find((s) => s.changePct <= 2.0 && s.jevScore >= 76);
     if (mod.id === 4) pick = [...candidates].sort((a, b) => b.changePct - a.changePct)[0];
-    if (mod.id === 5) pick = candidates.find((s) => ['PLTR', 'VST', 'MSFT', 'NVDA'].includes(s.symbol));
-    if (mod.id === 6) pick = candidates.find((s) => s.isDipOpportunity) || candidates[0];
+    if (mod.id === 5) {
+      const guruPool = ['PLTR', 'VST', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'AVGO', 'TSM', 'CEG'];
+      pick = sortedCandidates.find((s) => guruPool.includes(s.symbol)) || sortedCandidates[0];
+    }
+    if (mod.id === 6) pick = sortedCandidates.find((s) => s.isDipOpportunity) || sortedCandidates[0];
 
-    if (!pick) continue;
+    if (!pick) {
+      console.log(`[모듈 #${mod.id}] 전략 조건 충족 종목 없음 (관망 유지)`);
+      continue;
+    }
 
     const firstPct = Number(mod.split_1st_pct || 30);
     const allocUsd = cash * (firstPct / 100);
     const buyShares = Math.max(2, Math.floor(allocUsd / pick.price));
     const totalCost = Number((buyShares * pick.price).toFixed(2));
 
-    if (totalCost > cash) continue;
+    if (totalCost > cash) {
+      console.log(`[모듈 #${mod.id}] ${pick.symbol} 최소 2주 매수 금액($${totalCost})이 잔액($${cash}) 초과 -> 스킵`);
+      continue;
+    }
 
     const remainCash = Number((cash - totalCost).toFixed(2));
 
-    await sb
+    const { error: updateErr } = await sb
       .from('modules')
       .update({
         cash_usd: remainCash,
@@ -371,7 +470,12 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
       })
       .eq('id', mod.id);
 
-    await sb.from('trade_logs').insert({
+    if (updateErr) {
+      console.error(`[모듈 #${mod.id} DB 업데이트 실패]`, updateErr.message);
+      continue;
+    }
+
+    const { error: logErr } = await sb.from('trade_logs').insert({
       module_id: mod.id,
       ticker: pick.symbol,
       action_type: `1차 분할매수 (${firstPct}%)`,
@@ -381,12 +485,16 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
       created_at: nowIso,
     });
 
+    if (logErr) {
+      console.error(`[모듈 #${mod.id} 로그 저장 실패]`, logErr.message);
+    }
+
     console.log(`[모듈 #${mod.id}] ${pick.symbol} 1차 진입 ${buyShares}주 @ $${pick.price}`);
   }
 }
 
 // =========================================================================
-// MAIN: 무인 감시 → 발동 기준 통과 시에만 4단계 파이프라인 자동 실행
+// MAIN: 사용자 활성 감시 종목 로드 → 발동 기준 통과 시 4단계 파이프라인 실행
 // =========================================================================
 (async () => {
   try {
@@ -395,7 +503,8 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
     const { data: modules, error } = await sb.from('modules').select('*').order('id', { ascending: true });
     if (error || !modules) throw new Error(`Supabase modules 로드 실패: ${error?.message}`);
 
-    const allQuotes = await fetchLightweightQuotes();
+    const activeWatchlist = await loadActiveWatchlist(modules);
+    const allQuotes = await fetchLightweightQuotes(activeWatchlist);
     if (allQuotes.length === 0) {
       console.log('[대기] 조회된 시세 데이터 없음 — 종료');
       return;
@@ -411,7 +520,7 @@ async function step3and4_analyzeAndExecute(refinedList, modules, triggerSummary)
     }
 
     console.log(`=== [기준 충족! 4단계 파이프라인 자동 발동] 사유: ${gate.summary} ===`);
-    const deepData = await step1_collectDeepData(gate.targetQuotes);
+    const deepData = await step1_collectDeepData(gate.targetQuotes, modules);
     const jevRefined = step2_jevRefine(deepData);
     await step3and4_analyzeAndExecute(jevRefined, modules, gate.summary);
     console.log('=== 4단계 파이프라인 자동 실행 완료 ===');

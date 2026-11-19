@@ -162,6 +162,10 @@
     <button id="tab-MODULES" onclick="switchTab('MODULES')" class="px-4 py-2 rounded-xl text-xs font-bold bg-[#2C2C35] text-white cursor-pointer">
       6개 AI 모듈 실시간 현황 & ON/OFF
     </button>
+    <button id="tab-WATCHLIST" onclick="switchTab('WATCHLIST')" class="px-4 py-2 rounded-xl text-xs font-bold bg-[#17171C] text-[#8B95A1] border border-[#232329] hover:text-white cursor-pointer flex items-center gap-1.5">
+      <span>감시 종목 관리 (선택·추가·삭제)</span>
+      <span id="tab-watchlist-badge" class="px-1.5 py-0.5 rounded bg-[#3182F6]/20 text-[#3182F6] font-mono text-[10px]">20</span>
+    </button>
     <button id="tab-MONTHLY" onclick="switchTab('MONTHLY')" class="px-4 py-2 rounded-xl text-xs font-bold bg-[#17171C] text-[#8B95A1] border border-[#232329] hover:text-white cursor-pointer">
       6개월 월간 성능 성적표 (M1~M6 매월 평가)
     </button>
@@ -172,8 +176,85 @@
 
   <!-- MAIN CONTENT -->
   <main class="max-w-[1600px] mx-auto w-full p-4 flex-1">
+    <!-- VIEW 1: 6개 AI 모듈 -->
     <div id="view-MODULES" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
 
+    <!-- VIEW 2: 사용자 맞춤형 감시 종목 관리 (20+ 종목 선택·추가·삭제) -->
+    <div id="view-WATCHLIST" class="hidden bg-[#17171C] border border-[#232329] rounded-2xl p-5 flex-col gap-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#232329] pb-3.5">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="font-extrabold text-base text-white">감시 종목 풀 관리 (Watchlist Manager)</h2>
+            <span id="watchlist-active-summary" class="text-xs font-mono px-2.5 py-0.5 rounded-md bg-[#3182F6]/15 text-[#3182F6] border border-[#3182F6]/30 font-bold">
+              활성 감시 20 / 전체 20종목
+            </span>
+          </div>
+          <p class="text-xs text-[#8B95A1] mt-1">
+            ON으로 선택된 종목만 5분 주기 무인 엔진(engine.js)이 감시하고 매매 후보에 올립니다. 원하는 미국 주식 티커를 자유롭게 추가하거나 제거하세요.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="setAllWatchlistActive(true)" class="px-3 py-1.5 rounded-lg bg-[#22222A] hover:bg-[#2C2C35] text-white text-xs font-bold border border-[#2E2E38] cursor-pointer">
+            전체 선택 (ON)
+          </button>
+          <button onclick="setAllWatchlistActive(false)" class="px-3 py-1.5 rounded-lg bg-[#101012] hover:bg-[#22222A] text-[#8B95A1] text-xs font-bold border border-[#232329] cursor-pointer">
+            전체 해제 (OFF)
+          </button>
+        </div>
+      </div>
+
+      <!-- 신규 종목 추가 & 검색 폼 (실시간 갱신 시 입력창 포커스 유지) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 bg-[#101012] p-3.5 rounded-xl border border-[#232329]">
+        <form onsubmit="handleAddWatchlistStock(event)" class="lg:col-span-8 flex flex-wrap items-center gap-2">
+          <input
+            id="wl-input-symbol"
+            type="text"
+            maxlength="10"
+            placeholder="티커 (예: ARM, MU, NET)"
+            class="w-40 px-3 py-2 rounded-lg bg-[#17171C] border border-[#2C2C35] focus:border-[#3182F6] focus:outline-none text-xs font-mono uppercase text-white"
+            required
+          />
+          <input
+            id="wl-input-name"
+            type="text"
+            maxlength="30"
+            placeholder="종목명 (선택, 예: Arm Holdings)"
+            class="flex-1 min-w-[140px] px-3 py-2 rounded-lg bg-[#17171C] border border-[#2C2C35] focus:border-[#3182F6] focus:outline-none text-xs text-white"
+          />
+          <input
+            id="wl-input-sector"
+            type="text"
+            maxlength="20"
+            placeholder="섹터 (선택, 예: AI 반도체)"
+            class="w-36 px-3 py-2 rounded-lg bg-[#17171C] border border-[#2C2C35] focus:border-[#3182F6] focus:outline-none text-xs text-white"
+          />
+          <button type="submit" class="px-4 py-2 rounded-lg bg-[#3182F6] hover:bg-[#1B64DA] text-white font-bold text-xs transition cursor-pointer shrink-0">
+            + 종목 추가
+          </button>
+        </form>
+
+        <div class="lg:col-span-4 flex items-center gap-2">
+          <input
+            id="wl-search-input"
+            type="text"
+            oninput="watchlistSearchQuery = this.value; renderWatchlist();"
+            placeholder="목록 내 티커·종목명·섹터 검색..."
+            class="w-full px-3 py-2 rounded-lg bg-[#17171C] border border-[#2C2C35] focus:border-[#3182F6] focus:outline-none text-xs text-white"
+          />
+        </div>
+      </div>
+
+      <!-- DB 테이블 안내 배너 (watchlist 테이블 미생성 시에만 표시) -->
+      <div id="watchlist-db-notice" class="hidden bg-[#221A10] border border-[#6E4B1F] text-[#F5C06B] text-xs rounded-xl px-4 py-2.5">
+        Supabase에 <strong>watchlist</strong> 테이블이 아직 없어 기본 20종목 임시 모드로 표시 중입니다. SQL Editor에서 테이블 생성 쿼리를 1번 실행하면 추가·선택·삭제가 백엔드 엔진과 영구 동기화됩니다.
+      </div>
+
+      <!-- 종목 카드 그리드 -->
+      <div id="watchlist-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
+    </div>
+
+    <!-- VIEW 3: 6개월 월간 성능 성적표 -->
     <div id="view-MONTHLY" class="hidden bg-[#17171C] border border-[#232329] rounded-2xl p-5 flex-col gap-4">
       <div class="flex flex-wrap items-center justify-between border-b border-[#232329] pb-3 gap-3">
         <div>
@@ -203,6 +284,7 @@
       </div>
     </div>
 
+    <!-- VIEW 4: 실시간 체결 로그 -->
     <div id="view-LOGS" class="hidden bg-[#17171C] border border-[#232329] rounded-2xl p-5 flex-col gap-3">
       <h2 class="font-extrabold text-base text-white border-b border-[#232329] pb-3">24시간 무인 엔진 실시간 매매·필터 체결 로그 (Supabase DB)</h2>
       <div id="trade-logs-container" class="space-y-2.5"></div>
@@ -247,18 +329,24 @@
     </div>
   </div>
 
+  <!-- 하단 알림 토스트 -->
+  <div id="toast-msg" class="hidden fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-[#22222A] border border-[#3182F6]/60 text-white text-xs font-bold shadow-2xl"></div>
+
   <script>
     // =========================================================================
     // ★ 아래 세 줄의 작은따옴표('') 안에 사장님의 키와 URL을 입력하세요!
     // =========================================================================
-    const SUPABASE_URL = 'https://omybawknplaiytchaoed.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_nQ29mu7baq-90AKyUdtyrw_iv0MapXF';
-    const FINNHUB_WS_KEY = 'dbt7f1hr01qnliutkub0dbt7f1hr01qnliutkubg';
+    const SUPABASE_URL = '';
+    const SUPABASE_KEY = '';
+    const FINNHUB_WS_KEY = '';
 
     const sb = (SUPABASE_URL && SUPABASE_KEY) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
     let modulesData = [];
     let logsData = [];
+    let watchlistData = [];
+    let watchlistTableReady = false;
+    let watchlistSearchQuery = '';
     let selectedModId = 'ALL';
     let selectedMonthIdx = 0;
     let editingModalMod = null;
@@ -268,6 +356,7 @@
     let lastDbFetchTime = 0;
     let lastQuoteFetchTime = 0;
     let lastRenderHash = '';
+    let toastTimer = null;
 
     const FALLBACK_MODULES = [
       { id: 1, code_name: 'Balanced Quant', kr_name: '정석 밸런스형', ai_model: 'Claude 3.5 Sonnet', cash_usd: 1000, invested_usd: 0, holding_ticker: '현금관망', shares: 0, avg_price_usd: 0, roi_pct: 0.0, split_1st_pct: 30, split_water_pct: 40, split_pyramid_pct: 30, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: true, big_news_cooling_3h: true },
@@ -278,7 +367,40 @@
       { id: 6, code_name: 'Contrarian Hunter', kr_name: '악재-수급 괴리 역발상', ai_model: 'Gemini Flash Thinking', cash_usd: 1000, invested_usd: 0, holding_ticker: '현금관망', shares: 0, avg_price_usd: 0, roi_pct: 0.0, split_1st_pct: 25, split_water_pct: 50, split_pyramid_pct: 25, priced_in_filter: true, overheat_block: true, guidance_first: true, fad_no_watering: false, big_news_cooling_3h: true }
     ];
 
-    function getActiveTickers() {
+    const FALLBACK_WATCHLIST = [
+      { symbol: 'PLTR',  name: 'Palantir',          sector: 'AI 소프트웨어',   is_active: true },
+      { symbol: 'NVDA',  name: 'NVIDIA',            sector: 'AI 반도체',       is_active: true },
+      { symbol: 'VST',   name: 'Vistra',            sector: 'AI 전력·원전',    is_active: true },
+      { symbol: 'AMD',   name: 'AMD',               sector: 'AI 반도체',       is_active: true },
+      { symbol: 'SOFI',  name: 'SoFi Technologies', sector: '핀테크',          is_active: true },
+      { symbol: 'RKLB',  name: 'Rocket Lab',        sector: '우주 항공',       is_active: true },
+      { symbol: 'AAPL',  name: 'Apple',             sector: '빅테크',          is_active: true },
+      { symbol: 'MSFT',  name: 'Microsoft',         sector: '클라우드·AI',     is_active: true },
+      { symbol: 'TSLA',  name: 'Tesla',             sector: '자율주행·EV',     is_active: true },
+      { symbol: 'META',  name: 'Meta Platforms',    sector: 'AI 플랫폼',       is_active: true },
+      { symbol: 'GOOGL', name: 'Alphabet',          sector: 'AI·검색',         is_active: true },
+      { symbol: 'AMZN',  name: 'Amazon',            sector: '클라우드·커머스', is_active: true },
+      { symbol: 'AVGO',  name: 'Broadcom',          sector: 'AI 칩셋',         is_active: true },
+      { symbol: 'TSM',   name: 'TSMC',              sector: '파운드리',        is_active: true },
+      { symbol: 'CEG',   name: 'Constellation',     sector: '원전·전력',       is_active: true },
+      { symbol: 'IONQ',  name: 'IonQ',              sector: '양자컴퓨팅',      is_active: true },
+      { symbol: 'SMCI',  name: 'Super Micro',       sector: 'AI 서버',         is_active: true },
+      { symbol: 'COIN',  name: 'Coinbase',          sector: '크립토·핀테크',   is_active: true },
+      { symbol: 'UBER',  name: 'Uber',              sector: '모빌리티·AI',     is_active: true },
+      { symbol: 'HOOD',  name: 'Robinhood',         sector: '리테일 핀테크',   is_active: true }
+    ];
+
+    function showToast(msg, isError = false) {
+      const el = document.getElementById('toast-msg');
+      el.innerText = msg;
+      el.className = `fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-[#22222A] text-xs font-bold shadow-2xl border ${
+        isError ? 'border-[#F04452] text-[#F04452]' : 'border-[#3182F6]/70 text-white'
+      }`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 2800);
+    }
+
+    function getActiveHeldTickers() {
       return [...new Set(
         modulesData
           .map(m => (m.holding_ticker || '').trim().toUpperCase())
@@ -288,7 +410,7 @@
 
     function subscribeHeldTickersToWS() {
       if (!wsConnection || wsConnection.readyState !== WebSocket.OPEN) return;
-      const tickers = getActiveTickers();
+      const tickers = getActiveHeldTickers();
       tickers.forEach(sym => {
         if (!subscribedSymbols.has(sym)) {
           wsConnection.send(JSON.stringify({ type: 'subscribe', symbol: sym }));
@@ -322,10 +444,9 @@
     }
 
     async function refreshLiveTickerPrices(forceQuote = false) {
-      const watchTickers = getActiveTickers();
+      const watchTickers = getActiveHeldTickers();
       const now = Date.now();
 
-      // REST API로 실제 최신 현재가 주기 조회 (장 마감·프리장·애프터장 포함)
       if (FINNHUB_WS_KEY && watchTickers.length > 0 && (forceQuote || now - lastQuoteFetchTime >= 5000)) {
         lastQuoteFetchTime = now;
         await Promise.all(watchTickers.map(async (sym) => {
@@ -341,7 +462,6 @@
 
       subscribeHeldTickersToWS();
 
-      // 정확한 실시간 수익률 계산 (0주일 때 0.00% 보장 + 비정상 잔고 스파이크 방어)
       modulesData = modulesData.map(m => {
         const sym = (m.holding_ticker || '').trim().toUpperCase();
         const shares = Number(m.shares || 0);
@@ -372,6 +492,8 @@
         badge.innerText = '● SIMULATION MODE (Supabase 키 입력 대기)';
         badge.className = 'text-[10px] px-2 py-0.5 rounded-md bg-[#17171C] text-[#F04452] border border-[#25252D] font-mono';
         if (modulesData.length === 0) modulesData = JSON.parse(JSON.stringify(FALLBACK_MODULES));
+        if (watchlistData.length === 0) watchlistData = JSON.parse(JSON.stringify(FALLBACK_WATCHLIST));
+        watchlistTableReady = false;
         await refreshLiveTickerPrices(forceDb);
         renderIfChanged(forceDb);
         return;
@@ -387,12 +509,23 @@
           const { data: logs } = await sb.from('trade_logs').select('*').order('created_at', { ascending: false }).limit(50);
           logsData = logs || [];
 
+          // 사용자 감시 종목 테이블 로드
+          const { data: wl, error: wlErr } = await sb.from('watchlist').select('*').order('created_at', { ascending: true });
+          if (!wlErr && Array.isArray(wl)) {
+            watchlistTableReady = true;
+            watchlistData = wl;
+          } else {
+            watchlistTableReady = false;
+            if (watchlistData.length === 0) watchlistData = JSON.parse(JSON.stringify(FALLBACK_WATCHLIST));
+          }
+
           badge.innerText = '● LIVE DB SYNCED';
           badge.className = 'text-[10px] px-2 py-0.5 rounded-md bg-[#17171C] text-[#00C471] border border-[#25252D] font-mono';
         } catch (e) {
           badge.innerText = '● DB 연결 확인 필요';
           badge.className = 'text-[10px] px-2 py-0.5 rounded-md bg-[#17171C] text-[#F04452] border border-[#25252D] font-mono';
           if (modulesData.length === 0) modulesData = JSON.parse(JSON.stringify(FALLBACK_MODULES));
+          if (watchlistData.length === 0) watchlistData = JSON.parse(JSON.stringify(FALLBACK_WATCHLIST));
         }
       }
 
@@ -408,12 +541,14 @@
       const currentHash = JSON.stringify({
         selectedModId,
         selectedMonthIdx,
+        watchlistTableReady,
         mods: modulesData.map(m => [
           m.id, m.holding_ticker, m.shares, m.avg_price_usd, m.live_price_usd,
           m.cash_usd, m.roi_pct, m.ai_model, m.split_1st_pct, m.split_water_pct,
           m.split_pyramid_pct, m.priced_in_filter, m.overheat_block,
           m.guidance_first, m.fad_no_watering, m.big_news_cooling_3h
         ]),
+        wl: watchlistData.map(w => [w.symbol, w.is_active, w.name, w.sector]),
         logCount: logsData.length,
         lastLogId: logsData[0]?.id || 0
       });
@@ -495,9 +630,161 @@
         `;
       }).join('');
 
+      renderWatchlist();
       renderMonthlyReport();
       renderLogs();
       if (selectedModId !== 'ALL') renderInspector(selectedModId);
+    }
+
+    // =========================================================================
+    // 사용자 맞춤형 감시 종목 관리 (렌더 / ON·OFF 선택 / 추가 / 삭제)
+    // =========================================================================
+    function renderWatchlist() {
+      const activeCount = watchlistData.filter(w => w.is_active).length;
+      const totalCount = watchlistData.length;
+
+      document.getElementById('tab-watchlist-badge').innerText = `${activeCount}`;
+      document.getElementById('watchlist-active-summary').innerText = `활성 감시 ${activeCount} / 전체 ${totalCount}종목`;
+
+      const noticeEl = document.getElementById('watchlist-db-notice');
+      if (sb && !watchlistTableReady) {
+        noticeEl.classList.remove('hidden');
+      } else {
+        noticeEl.classList.add('hidden');
+      }
+
+      const q = watchlistSearchQuery.trim().toLowerCase();
+      const filtered = watchlistData.filter(w =>
+        !q ||
+        (w.symbol || '').toLowerCase().includes(q) ||
+        (w.name || '').toLowerCase().includes(q) ||
+        (w.sector || '').toLowerCase().includes(q)
+      );
+
+      const grid = document.getElementById('watchlist-grid');
+      if (filtered.length === 0) {
+        grid.innerHTML = `<div class="col-span-full text-center text-xs text-[#6B7684] py-8 bg-[#101012] rounded-xl border border-[#232329]">검색 조건에 맞는 종목이 없습니다. 상단 입력창에서 새 티커를 추가해 보세요.</div>`;
+        return;
+      }
+
+      grid.innerHTML = filtered.map(w => {
+        const on = !!w.is_active;
+        const sym = w.symbol;
+        return `
+          <div class="rounded-xl p-3 border flex flex-col justify-between gap-2.5 transition ${
+            on ? 'bg-[#101012] border-[#3182F6]/50' : 'bg-[#101012]/60 border-[#202026] opacity-65'
+          }">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-mono font-black text-sm ${on ? 'text-white' : 'text-[#8B95A1]'}">${sym}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-[#17171C] text-[#8B95A1] border border-[#25252D] truncate">${w.sector || '기타'}</span>
+                </div>
+                <div class="text-[11px] text-[#8B95A1] truncate mt-0.5">${w.name || sym}</div>
+              </div>
+              <button
+                onclick="removeWatchlistStock('${sym}')"
+                title="종목 삭제"
+                class="text-[11px] px-1.5 py-0.5 rounded bg-[#17171C] hover:bg-[#F04452]/20 text-[#6B7684] hover:text-[#F04452] border border-[#25252D] transition cursor-pointer shrink-0"
+              >
+                삭제
+              </button>
+            </div>
+
+            <button
+              onclick="toggleWatchlistStock('${sym}')"
+              class="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-between transition cursor-pointer ${
+                on
+                  ? 'bg-[#3182F6]/15 text-[#3182F6] border border-[#3182F6]/40 hover:bg-[#3182F6]/25'
+                  : 'bg-[#17171C] text-[#6B7684] border border-[#25252D] hover:text-white'
+              }"
+            >
+              <span>${on ? 'AI 감시 중' : '감시 제외됨'}</span>
+              <span class="font-mono">${on ? 'ON' : 'OFF'}</span>
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function handleAddWatchlistStock(e) {
+      e.preventDefault();
+      const symInput = document.getElementById('wl-input-symbol');
+      const nameInput = document.getElementById('wl-input-name');
+      const sectorInput = document.getElementById('wl-input-sector');
+
+      const symbol = symInput.value.trim().toUpperCase();
+      const name = nameInput.value.trim() || symbol;
+      const sector = sectorInput.value.trim() || '사용자 추가';
+
+      if (!/^[A-Z.-]{1,10}$/.test(symbol)) {
+        showToast('영문 미국 주식 티커를 정확히 입력해 주세요 (예: ARM, MU)', true);
+        return;
+      }
+
+      if (watchlistData.some(w => w.symbol.toUpperCase() === symbol)) {
+        showToast(`${symbol} 종목은 이미 감시 목록에 있습니다.`, true);
+        return;
+      }
+
+      const newItem = { symbol, name, sector, is_active: true };
+      watchlistData.push(newItem);
+      symInput.value = '';
+      nameInput.value = '';
+      sectorInput.value = '';
+      renderIfChanged(true);
+
+      if (sb && watchlistTableReady) {
+        const { error } = await sb.from('watchlist').insert(newItem);
+        if (error) {
+          showToast(`DB 저장 실패: ${error.message}`, true);
+          return;
+        }
+      }
+      showToast(`${symbol} 종목이 감시 목록에 추가되었습니다.`);
+    }
+
+    async function toggleWatchlistStock(symbol) {
+      const target = watchlistData.find(w => w.symbol === symbol);
+      if (!target) return;
+      target.is_active = !target.is_active;
+      renderIfChanged(true);
+
+      if (sb && watchlistTableReady) {
+        const { error } = await sb.from('watchlist').update({ is_active: target.is_active }).eq('symbol', symbol);
+        if (error) {
+          showToast(`상태 변경 실패: ${error.message}`, true);
+          return;
+        }
+      }
+      showToast(`${symbol} 감시 상태: ${target.is_active ? 'ON (포함)' : 'OFF (제외)'}`);
+    }
+
+    async function removeWatchlistStock(symbol) {
+      watchlistData = watchlistData.filter(w => w.symbol !== symbol);
+      renderIfChanged(true);
+
+      if (sb && watchlistTableReady) {
+        const { error } = await sb.from('watchlist').delete().eq('symbol', symbol);
+        if (error) {
+          showToast(`삭제 실패: ${error.message}`, true);
+          return;
+        }
+      }
+      showToast(`${symbol} 종목을 감시 목록에서 제거했습니다.`);
+    }
+
+    async function setAllWatchlistActive(activeState) {
+      watchlistData = watchlistData.map(w => ({ ...w, is_active: activeState }));
+      renderIfChanged(true);
+
+      if (sb && watchlistTableReady) {
+        const symbols = watchlistData.map(w => w.symbol);
+        if (symbols.length > 0) {
+          await sb.from('watchlist').update({ is_active: activeState }).in('symbol', symbols);
+        }
+      }
+      showToast(activeState ? '모든 종목을 감시 ON으로 활성화했습니다.' : '모든 종목을 감시 OFF로 해제했습니다.');
     }
 
     function renderSwitchBadge(m, key, label) {
@@ -579,7 +866,6 @@
       document.getElementById('insp-entry-price').innerText = shares > 0 ? `$${entry} → $${curPrice.toFixed(2)}` : '현금 대기';
       document.getElementById('insp-call-wall').innerText = shares > 0 ? `$${callWall}` : '-';
 
-      // 미니 SVG 차트 (빨간 매수 핀 + 매수 일시 + 초록 현재가 배지 및 점선 가이드라인)
       const pts = (shares > 0 && entry > 0)
         ? [entry * 0.95, entry * 0.97, entry * 0.985, entry, (entry + curPrice) / 2, curPrice]
         : [100, 100, 100, 100, 100, 100];
@@ -649,12 +935,12 @@
 
       const latestReason = modLogs[0]?.reason || (shares > 0
         ? `Jev 35기준 종합 교차검증 통과 및 Put Wall($${putWall}) 지지 확인 후 분할 비중(${m.split_1st_pct}/${m.split_water_pct}/${m.split_pyramid_pct}%) 규칙에 따라 진입`
-        : `백엔드 STEP 0 무인 감시 엔진이 5분 주기로 시장 급등락 및 감마 벽 타점 도달 여부를 감시 중입니다.`);
+        : `백엔드 STEP 0 무인 감시 엔진이 활성화된 감시 종목들을 5분 주기로 감시 중입니다.`);
 
       document.getElementById('insp-headline').innerText = `"${m.holding_ticker || '현금관망'} — ${m.kr_name} 알고리즘 상태"`;
       document.getElementById('insp-reasons').innerHTML = `
         <div class="bg-[#17171C] border-l-2 border-[#3182F6] px-3.5 py-2.5 rounded-r-lg"><strong class="text-white">근거 1 (최근 엔진 기록).</strong> ${latestReason}</div>
-        <div class="bg-[#17171C] border-l-2 border-[#3182F6] px-3.5 py-2.5 rounded-r-lg"><strong class="text-white">근거 2 (지지·저항 구조).</strong> ${shares > 0 ? `하단 Put Wall($${putWall})에서 물타기(${m.split_water_pct}%) 방어벽이 형성되어 있으며, 상단 Call Wall($${callWall})까지 상승 여력 확보` : `진입 후보 종목의 최소 2주 매수 원칙 및 Put Wall 지지선 확인 대기 중`}</div>
+        <div class="bg-[#17171C] border-l-2 border-[#3182F6] px-3.5 py-2.5 rounded-r-lg"><strong class="text-white">근거 2 (지지·저항 구조).</strong> ${shares > 0 ? `하단 Put Wall($${putWall})에서 물타기(${m.split_water_pct}%) 방어벽이 형성되어 있으며, 상단 Call Wall($${callWall})까지 상승 여력 확보` : `활성화된 감시 종목의 최소 2주 매수 원칙 및 Put Wall 지지선 확인 대기 중`}</div>
         <div class="bg-[#17171C] border-l-2 border-[#3182F6] px-3.5 py-2.5 rounded-r-lg"><strong class="text-white">근거 3 (방어 필터 상태).</strong> 3시간 냉각기(${m.big_news_cooling_3h ? 'ON' : 'OFF'}) · 선반영 필터(${m.priced_in_filter ? 'ON' : 'OFF'}) · 과열 금지(${m.overheat_block ? 'ON' : 'OFF'})</div>
       `;
       document.getElementById('insp-split-info').innerHTML = `자금 배분: <strong class="text-white">1차 ${m.split_1st_pct}% / 물타기 ${m.split_water_pct}% / 불타기 ${m.split_pyramid_pct}%</strong>`;
@@ -662,17 +948,19 @@
     }
 
     function switchTab(tab) {
-      ['MODULES', 'MONTHLY', 'LOGS'].forEach(t => {
+      ['MODULES', 'WATCHLIST', 'MONTHLY', 'LOGS'].forEach(t => {
         const view = document.getElementById(`view-${t}`);
         const btn = document.getElementById(`tab-${t}`);
+        const isWatchlistTab = t === 'WATCHLIST';
+        const flexClass = isWatchlistTab ? ' flex items-center gap-1.5' : '';
         if (t === tab) {
           view.classList.remove('hidden');
           if (t !== 'MODULES') view.classList.add('flex');
-          btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-[#2C2C35] text-white cursor-pointer';
+          btn.className = `px-4 py-2 rounded-xl text-xs font-bold bg-[#2C2C35] text-white cursor-pointer${flexClass}`;
         } else {
           view.classList.add('hidden');
           view.classList.remove('flex');
-          btn.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-[#17171C] text-[#8B95A1] border border-[#232329] hover:text-white cursor-pointer';
+          btn.className = `px-4 py-2 rounded-xl text-xs font-bold bg-[#17171C] text-[#8B95A1] border border-[#232329] hover:text-white cursor-pointer${flexClass}`;
         }
       });
     }
@@ -714,7 +1002,7 @@
     function renderLogs() {
       const box = document.getElementById('trade-logs-container');
       if (logsData.length === 0) {
-        box.innerHTML = `<div class="text-xs text-[#8B95A1] p-4 bg-[#101012] rounded-xl border border-[#202026]">현재 현금 100% 대기 중입니다. 백엔드 엔진(engine.js)이 5분 주기로 시세를 감시하다가 발동 기준을 충족하면 4단계 파이프라인을 자동 실행하고 이곳에 체결 로그를 기록합니다.</div>`;
+        box.innerHTML = `<div class="text-xs text-[#8B95A1] p-4 bg-[#101012] rounded-xl border border-[#202026]">현재 현금 100% 대기 중입니다. 백엔드 엔진(engine.js)이 활성화된 감시 종목을 5분 주기로 감시하다가 발동 기준을 충족하면 4단계 파이프라인을 자동 실행하고 이곳에 체결 로그를 기록합니다.</div>`;
         return;
       }
       box.innerHTML = logsData.map(l => `
@@ -815,13 +1103,13 @@
       }
       closeDetailModal();
       renderIfChanged(true);
+      showToast(`모듈 #${editingModalMod?.id || ''} 설정이 저장되었습니다.`);
     }
 
     window.onload = () => {
       loadAllData(true).then(() => {
         connectFinnhubWebSocket();
       });
-      // 1초마다 실시간 시세·수익률 갱신 (DB 및 REST 시세는 과부하 방지를 위해 5초 주기 병행)
       setInterval(() => {
         loadAllData(false);
       }, 1000);
