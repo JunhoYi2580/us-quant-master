@@ -1,4 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
 // GitHub Secrets 환경변수 로드
 const SUPABASE_URL = process.env.SUPABASE_URL;
